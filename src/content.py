@@ -60,6 +60,10 @@ Wish Motors არის SsangYong-ის სპეციალიზებუ�
 - ᲐᲠ გამოიყენო markdown ფორმატირება: არავითარი **, *, ##, __ სიმბოლოები. მხოლოდ ემოჯი და ჩვეულებრივი ტექსტი.
 - ᲐᲠ ჩასვა საკონტაქტო ინფო — ცალკე დაემატება ავტომატურად
 
+პოსტის ბოლოს, ბოლო სტრიქონზე დაამატე ზუსტად ასე (სხვა ტექსტი არ):
+PART_EN: [the specific car part in English, e.g. "brake pads", "engine oil filter", "car battery"]
+PART_KA: [იგივე ქართულად, მაგ: "სამუხრუჭე ხუნდები", "ზეთის ფილტრი", "ავტომობილის ბატარეა"]
+
 ნიმუში (ზუსტად ამ სტილით):
 {example}"""
 
@@ -73,28 +77,34 @@ def build_text_prompt(category: str) -> str:
     return _BASE_SYSTEM.format(topics=topics, example=_EXAMPLE_POST)
 
 
-_MAINTENANCE_IMAGE = (
-    "3D Pixar Disney animation style advertising poster. "
-    "Scene: modern car service garage. "
-    "Main focus: large realistic close-up of a brake pad and brake disc in the center of the image, clearly labeled with Georgian text 'სამუხრუჭე ხუნდები' next to it. "
-    "Background: garage walls with bold text 'WISH MOTORS' painted large on the wall, SsangYong car lifted on a hydraulic lift in background. "
-    "Character: friendly cartoon mechanic in navy blue uniform pointing at the brake parts. "
-    "Colors: navy blue #1B2B5C and cyan #00B4D8, white accents. "
-    "Style: professional, clean, bright, high quality social media poster. "
-    "Format: square 1:1, vibrant colors, sharp details, no blurry text."
-)
-
-_ELECTRICAL_IMAGE = (
-    "3D Pixar Disney animation style advertising poster. "
-    "Scene: modern car service garage. "
-    "Main focus: large realistic close-up of a car battery with jumper cables in the center of the image, clearly labeled with Georgian text 'ავტომობილის ბატარეა' next to it. "
-    "Background: garage walls with bold text 'WISH MOTORS' painted large on the wall, SsangYong car with open hood in background showing engine bay with glowing electrical components. "
-    "Character: friendly cartoon mechanic in navy blue uniform holding an OBD diagnostic scanner. "
-    "Colors: navy blue #1B2B5C and cyan #00B4D8, white accents. "
-    "Style: professional, clean, bright, high quality social media poster. "
-    "Format: square 1:1, vibrant colors, sharp details, no blurry text."
-)
+def build_image_prompt(part_en: str, part_ka: str) -> str:
+    return (
+        f"3D Pixar Disney animation style advertising poster. "
+        f"Scene: modern car service garage. "
+        f"Main focus: large realistic close-up of {part_en} in the center of the image, "
+        f"clearly labeled with Georgian text '{part_ka}' next to it. "
+        f"Background: garage walls with bold text 'WISH MOTORS' painted large on the wall, "
+        f"SsangYong car lifted on a hydraulic lift in background. "
+        f"Character: friendly cartoon mechanic in navy blue uniform pointing at the {part_en}. "
+        f"Colors: navy blue #1B2B5C and cyan #00B4D8, white accents. "
+        f"Style: professional, clean, bright, high quality social media poster. "
+        f"Format: square 1:1, vibrant colors, sharp details."
+    )
 
 
-def build_image_prompt(category: str) -> str:
-    return _MAINTENANCE_IMAGE if category == "maintenance" else _ELECTRICAL_IMAGE
+def extract_parts_from_text(text: str) -> tuple[str, str]:
+    """Extract PART_EN and PART_KA lines from generated text. Returns (part_en, part_ka, clean_text)."""
+    part_en = "car part"
+    part_ka = "სათადარიგო ნაწილი"
+    for line in text.splitlines():
+        if line.startswith("PART_EN:"):
+            part_en = line.replace("PART_EN:", "").strip()
+        elif line.startswith("PART_KA:"):
+            part_ka = line.replace("PART_KA:", "").strip()
+    return part_en, part_ka
+
+
+def clean_text(text: str) -> str:
+    """Remove PART_EN/PART_KA lines from post text."""
+    lines = [l for l in text.splitlines() if not l.startswith("PART_EN:") and not l.startswith("PART_KA:")]
+    return "\n".join(lines).strip()
