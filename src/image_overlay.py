@@ -54,29 +54,30 @@ def add_overlay(image_path: str, part_en: str, part_ka: str) -> str:
         fill=(0, 180, 216, 255),
     )
 
-    fnt_ka = ImageFont.truetype(font_geo, size=int(height * 0.068))
-    fnt_en = ImageFont.truetype(font_lat, size=int(height * 0.046))
     fnt_brand = ImageFont.truetype(font_lat, size=int(height * 0.040))
 
-    # — Georgian part name (top line of banner) —
-    ka_y = banner_top + int(banner_h * 0.08)
+    # — Georgian part name: auto-size to fit banner width —
+    max_text_width = int(width * 0.90)
+    font_size = int(height * 0.075)
+    while font_size > int(height * 0.030):
+        fnt_ka = ImageFont.truetype(font_geo, size=font_size)
+        bbox = draw.textbbox((0, 0), part_ka, font=fnt_ka)
+        if (bbox[2] - bbox[0]) <= max_text_width:
+            break
+        font_size -= 2
+
+    ka_y = banner_top + int(banner_h * 0.15)
     bbox = draw.textbbox((0, 0), part_ka, font=fnt_ka)
     ka_x = (width - (bbox[2] - bbox[0])) // 2
     draw.text((ka_x + 2, ka_y + 2), part_ka, font=fnt_ka, fill=(0, 0, 0, 130))
     draw.text((ka_x, ka_y), part_ka, font=fnt_ka, fill=(255, 255, 255, 255))
-
-    # — English part name (second line) —
-    en_y = ka_y + int(banner_h * 0.38)
-    bbox = draw.textbbox((0, 0), part_en, font=fnt_en)
-    en_x = (width - (bbox[2] - bbox[0])) // 2
-    draw.text((en_x, en_y), part_en, font=fnt_en, fill=(0, 180, 216, 255))
 
     # — WISH MOTORS brand (bottom right) —
     brand = "WISH MOTORS"
     bbox = draw.textbbox((0, 0), brand, font=fnt_brand)
     bw = bbox[2] - bbox[0]
     brand_x = width - bw - int(width * 0.04)
-    brand_y = height - int(banner_h * 0.30)
+    brand_y = height - int(banner_h * 0.35)
     draw.text((brand_x, brand_y), brand, font=fnt_brand, fill=(0, 180, 216, 255))
 
     out_path = image_path.replace(".jpg", "_final.jpg")

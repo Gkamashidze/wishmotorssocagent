@@ -81,8 +81,8 @@ def build_image_prompt(part_en: str, part_ka: str) -> str:
     return (
         f"3D Pixar Disney animation style advertising poster. "
         f"Scene: modern car service garage. "
-        f"Main focus: large realistic close-up of {part_en} in the center of the image, "
-        f"clearly labeled with English text '{part_en}' on a clean white label tag next to it. "
+        f"Main focus: large realistic close-up of {part_en} in the center of the image. "
+        f"No text labels or tags on the parts themselves. "
         f"Background: garage walls with large bold sign reading 'WISH MOTORS' in navy blue letters. "
         f"SsangYong car lifted on a hydraulic lift in background. "
         f"Character: friendly cartoon mechanic in navy blue uniform pointing at the {part_en}. "
