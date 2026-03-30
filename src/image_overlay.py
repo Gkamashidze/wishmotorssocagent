@@ -6,28 +6,34 @@ from PIL import Image, ImageDraw, ImageFont
 
 logger = logging.getLogger(__name__)
 
-_FONT_URL = (
+_FONT_GEO_URL = (
     "https://github.com/googlefonts/noto-fonts/raw/main/"
-    "hinted/ttf/NotoSansGeorgian/NotoSansGeorgian-Regular.ttf"
+    "hinted/ttf/NotoSansGeorgian/NotoSansGeorgian-Bold.ttf"
 )
-_FONT_PATH = "/tmp/NotoSansGeorgian-Regular.ttf"
+_FONT_LAT_URL = (
+    "https://github.com/googlefonts/noto-fonts/raw/main/"
+    "hinted/ttf/NotoSans/NotoSans-Regular.ttf"
+)
+_FONT_GEO_PATH = "/tmp/NotoSansGeorgian-Bold.ttf"
+_FONT_LAT_PATH = "/tmp/NotoSans-Regular.ttf"
 
 
-def _ensure_font() -> str:
-    if not os.path.exists(_FONT_PATH):
-        logger.info("Downloading Georgian font...")
-        r = requests.get(_FONT_URL, timeout=30)
-        r.raise_for_status()
-        with open(_FONT_PATH, "wb") as f:
-            f.write(r.content)
-        logger.info("Georgian font downloaded: %s", _FONT_PATH)
-    return _FONT_PATH
+def _ensure_fonts() -> tuple[str, str]:
+    for url, path in [(_FONT_GEO_URL, _FONT_GEO_PATH), (_FONT_LAT_URL, _FONT_LAT_PATH)]:
+        if not os.path.exists(path):
+            logger.info("Downloading font: %s", path)
+            r = requests.get(url, timeout=30)
+            r.raise_for_status()
+            with open(path, "wb") as f:
+                f.write(r.content)
+            logger.info("Font downloaded: %s", path)
+    return _FONT_GEO_PATH, _FONT_LAT_PATH
 
 
 def add_overlay(image_path: str, part_en: str, part_ka: str) -> str:
     """Add WISH MOTORS branding + Georgian/English part labels to image.
     Returns path to the new overlaid image."""
-    font_path = _ensure_font()
+    font_geo, font_lat = _ensure_fonts()
     img = Image.open(image_path).convert("RGB")
     width, height = img.size
 
@@ -38,40 +44,40 @@ def add_overlay(image_path: str, part_en: str, part_ka: str) -> str:
     banner_top = height - banner_h
     draw.rectangle(
         [(0, banner_top), (width, height)],
-        fill=(27, 43, 92, 210),  # navy #1B2B5C with alpha
+        fill=(27, 43, 92, 220),
     )
 
     # — Cyan accent line above banner —
     accent_h = max(4, int(height * 0.005))
     draw.rectangle(
         [(0, banner_top), (width, banner_top + accent_h)],
-        fill=(0, 180, 216, 255),  # cyan #00B4D8
+        fill=(0, 180, 216, 255),
     )
 
-    font_large = ImageFont.truetype(font_path, size=int(height * 0.065))
-    font_medium = ImageFont.truetype(font_path, size=int(height * 0.048))
-    font_brand = ImageFont.truetype(font_path, size=int(height * 0.042))
+    fnt_ka = ImageFont.truetype(font_geo, size=int(height * 0.068))
+    fnt_en = ImageFont.truetype(font_lat, size=int(height * 0.046))
+    fnt_brand = ImageFont.truetype(font_lat, size=int(height * 0.040))
 
     # — Georgian part name (top line of banner) —
     ka_y = banner_top + int(banner_h * 0.08)
-    bbox = draw.textbbox((0, 0), part_ka, font=font_large)
+    bbox = draw.textbbox((0, 0), part_ka, font=fnt_ka)
     ka_x = (width - (bbox[2] - bbox[0])) // 2
-    draw.text((ka_x + 2, ka_y + 2), part_ka, font=font_large, fill=(0, 0, 0, 120))
-    draw.text((ka_x, ka_y), part_ka, font=font_large, fill=(255, 255, 255, 255))
+    draw.text((ka_x + 2, ka_y + 2), part_ka, font=fnt_ka, fill=(0, 0, 0, 130))
+    draw.text((ka_x, ka_y), part_ka, font=fnt_ka, fill=(255, 255, 255, 255))
 
     # — English part name (second line) —
-    en_y = ka_y + int(banner_h * 0.35)
-    bbox = draw.textbbox((0, 0), part_en, font=font_medium)
+    en_y = ka_y + int(banner_h * 0.38)
+    bbox = draw.textbbox((0, 0), part_en, font=fnt_en)
     en_x = (width - (bbox[2] - bbox[0])) // 2
-    draw.text((en_x, en_y), part_en, font=font_medium, fill=(0, 180, 216, 255))
+    draw.text((en_x, en_y), part_en, font=fnt_en, fill=(0, 180, 216, 255))
 
     # — WISH MOTORS brand (bottom right) —
     brand = "WISH MOTORS"
-    bbox = draw.textbbox((0, 0), brand, font=font_brand)
+    bbox = draw.textbbox((0, 0), brand, font=fnt_brand)
     bw = bbox[2] - bbox[0]
     brand_x = width - bw - int(width * 0.04)
-    brand_y = height - int(banner_h * 0.32)
-    draw.text((brand_x, brand_y), brand, font=font_brand, fill=(0, 180, 216, 255))
+    brand_y = height - int(banner_h * 0.30)
+    draw.text((brand_x, brand_y), brand, font=fnt_brand, fill=(0, 180, 216, 255))
 
     out_path = image_path.replace(".jpg", "_final.jpg")
     img.save(out_path, "JPEG", quality=95)
