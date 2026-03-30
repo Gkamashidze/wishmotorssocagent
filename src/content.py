@@ -57,6 +57,7 @@ Wish Motors არის SsangYong-ის სპეციალიზებუ�
 - ასწავლოს, სარგებელი მოუტანოს, ნდობა ჩამოაყალიბოს
 - ემოჯი-ებით მდიდარი, სათაური გამოკვეთილი
 - 200–350 სიტყვა (არა გრძელი)
+- ᲐᲠ გამოიყენო markdown ფორმატირება: არავითარი **, *, ##, __ სიმბოლოები. მხოლოდ ემოჯი და ჩვეულებრივი ტექსტი.
 - ᲐᲠ ჩასვა საკონტაქტო ინფო — ცალკე დაემატება ავტომატურად
 
 ნიმუში (ზუსტად ამ სტილით):
@@ -72,19 +73,28 @@ def build_text_prompt(category: str) -> str:
     return _BASE_SYSTEM.format(topics=topics, example=_EXAMPLE_POST)
 
 
+_MAINTENANCE_IMAGE = (
+    "3D Pixar Disney animation style advertising poster. "
+    "Scene: modern car service garage. "
+    "Main focus: large realistic close-up of a brake pad and brake disc in the center of the image, clearly labeled with Georgian text 'სამუხრუჭე ხუნდები' next to it. "
+    "Background: garage walls with bold text 'WISH MOTORS' painted large on the wall, SsangYong car lifted on a hydraulic lift in background. "
+    "Character: friendly cartoon mechanic in navy blue uniform pointing at the brake parts. "
+    "Colors: navy blue #1B2B5C and cyan #00B4D8, white accents. "
+    "Style: professional, clean, bright, high quality social media poster. "
+    "Format: square 1:1, vibrant colors, sharp details, no blurry text."
+)
+
+_ELECTRICAL_IMAGE = (
+    "3D Pixar Disney animation style advertising poster. "
+    "Scene: modern car service garage. "
+    "Main focus: large realistic close-up of a car battery with jumper cables in the center of the image, clearly labeled with Georgian text 'ავტომობილის ბატარეა' next to it. "
+    "Background: garage walls with bold text 'WISH MOTORS' painted large on the wall, SsangYong car with open hood in background showing engine bay with glowing electrical components. "
+    "Character: friendly cartoon mechanic in navy blue uniform holding an OBD diagnostic scanner. "
+    "Colors: navy blue #1B2B5C and cyan #00B4D8, white accents. "
+    "Style: professional, clean, bright, high quality social media poster. "
+    "Format: square 1:1, vibrant colors, sharp details, no blurry text."
+)
+
+
 def build_image_prompt(category: str) -> str:
-    theme = (
-        "car maintenance, oil change, filters, mechanic tools, engine care"
-        if category == "maintenance"
-        else "car electrical system, battery, wiring, OBD diagnostic scanner, sensors"
-    )
-    return (
-        f"3D Pixar Disney animation style advertising poster. "
-        f"Theme: {theme}. "
-        f"Setting: modern car service center garage, SsangYong cars visible. "
-        f"Characters: friendly cartoon mechanic in navy blue uniform. "
-        f"Colors: navy blue #1B2B5C and cyan #00B4D8, white accents. "
-        f"Style: professional, clean, bright, high quality social media poster. "
-        f"Branding: Wish Motors logo area visible. "
-        f"Format: square 1:1, vibrant colors, sharp details."
-    )
+    return _MAINTENANCE_IMAGE if category == "maintenance" else _ELECTRICAL_IMAGE
