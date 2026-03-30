@@ -6,7 +6,7 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 logger = logging.getLogger(__name__)
 
-engine = create_engine("sqlite:///wishmotors.db", connect_args={"check_same_thread": False})
+engine = create_engine("sqlite:////tmp/wishmotors.db", connect_args={"check_same_thread": False})
 Session = sessionmaker(bind=engine)
 
 

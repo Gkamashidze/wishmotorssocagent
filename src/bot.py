@@ -1,5 +1,6 @@
 from __future__ import annotations
 import logging
+import os
 from datetime import time, timezone
 from typing import Any
 
@@ -119,6 +120,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             mark_published(pending["post_id"])
             set_last_category(pending["category"])
             _pending.pop(post_id_str, None)
+            try:
+                os.remove(pending["image_path"])
+            except OSError:
+                pass
             await context.bot.send_message(
                 chat_id=config.telegram_chat_id,
                 text="✅ გამოქვეყნდა! Facebook გვერდსა და ჯგუფში.",
@@ -132,8 +137,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     elif action == "regenerate":
         category = pending["category"]
+        old_image = pending.get("image_path")
         mark_skipped(pending["post_id"])
         _pending.pop(post_id_str, None)
+        if old_image:
+            try:
+                os.remove(old_image)
+            except OSError:
+                pass
         await query.edit_message_reply_markup(reply_markup=None)
         await context.bot.send_message(chat_id=config.telegram_chat_id, text="🔄 ვქმნი ახალ ვარიანტს...")
         try:
