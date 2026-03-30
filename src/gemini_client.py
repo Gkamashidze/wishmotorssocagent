@@ -3,12 +3,11 @@ import base64
 import logging
 import tempfile
 import requests
-from google import genai
-from google.genai import types
+import google.generativeai as genai
 
 logger = logging.getLogger(__name__)
 
-_TEXT_MODEL = "gemini-2.0-flash-lite"
+_TEXT_MODEL = "gemini-1.5-flash-latest"
 _IMAGE_API = (
     "https://generativelanguage.googleapis.com/v1beta"
     "/models/imagen-3.0-generate-001:predict"
@@ -17,12 +16,10 @@ _IMAGE_API = (
 
 def generate_post_text(prompt: str, api_key: str) -> str:
     """Generate Georgian post text using Gemini."""
-    client = genai.Client(api_key=api_key)
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel(_TEXT_MODEL)
     try:
-        response = client.models.generate_content(
-            model=_TEXT_MODEL,
-            contents=prompt,
-        )
+        response = model.generate_content(prompt)
         logger.info("Text generated successfully (%d chars)", len(response.text))
         return response.text
     except Exception as exc:
