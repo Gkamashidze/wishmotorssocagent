@@ -7,7 +7,7 @@ from google import genai
 
 logger = logging.getLogger(__name__)
 
-_TEXT_MODEL = "gemini-2.0-flash"
+_TEXT_MODEL = "gemini-2.5-flash"
 _IMAGE_API = (
     "https://generativelanguage.googleapis.com/v1beta"
     "/models/imagen-4.0-generate-001:predict"
