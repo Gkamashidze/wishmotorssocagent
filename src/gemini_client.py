@@ -6,9 +6,9 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-_TEXT_MODEL = "gemini-pro"
+_TEXT_MODEL = "gemini-1.5-flash"
 _TEXT_API = (
-    "https://generativelanguage.googleapis.com/v1"
+    "https://generativelanguage.googleapis.com/v1beta"
     "/models/{model}:generateContent"
 )
 _IMAGE_API = (
