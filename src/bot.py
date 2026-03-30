@@ -4,7 +4,7 @@ from datetime import time, timezone
 from typing import Any
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CallbackQueryHandler, ContextTypes
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 
 from src.config import load_config, Config
 from src.database import get_last_category, set_last_category, save_post, mark_published, mark_skipped
@@ -50,6 +50,22 @@ async def _send_for_approval(bot, chat_id: int, post_data: dict[str, Any]) -> No
         )
     if len(post_data["text"]) > 1024:
         await bot.send_message(chat_id=chat_id, text=f"📝 სრული ტექსტი:\n\n{post_data['text']}")
+
+
+async def generate_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/generate command — manually trigger post generation."""
+    config: Config = context.bot_data["config"]
+    if update.effective_chat.id != config.telegram_chat_id:
+        return  # ignore requests from other chats
+    category = next_category(get_last_category())
+    await update.message.reply_text(f"⏳ ვქმნი პოსტს ({category})... (1–2 წუთი)")
+    try:
+        post_data = await _generate_post(config, category)
+        post_data["config"] = config
+        await _send_for_approval(context.bot, config.telegram_chat_id, post_data)
+    except Exception as exc:
+        logger.error("Manual generate failed: %s", exc)
+        await update.message.reply_text(f"❌ შეცდომა:\n{str(exc)[:300]}")
 
 
 async def scheduled_post(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -143,6 +159,7 @@ def main() -> None:
         name="wish_motors_post",
     )
 
+    app.add_handler(CommandHandler("generate", generate_command))
     app.add_handler(CallbackQueryHandler(handle_callback))
     logger.info("Wish Motors bot started. Posts scheduled: Mon & Thu 10:00 GEST.")
     app.run_polling(allowed_updates=["message", "callback_query"])
