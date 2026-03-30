@@ -1,6 +1,7 @@
 from __future__ import annotations
 import base64
 import logging
+import os
 import tempfile
 import requests
 from google import genai
@@ -29,8 +30,8 @@ def generate_post_text(prompt: str, api_key: str) -> str:
         raise
 
 
-def generate_post_image(prompt: str, api_key: str) -> str:
-    """Generate 3D Pixar-style image using Imagen 3. Returns path to saved /tmp file."""
+def generate_post_image(prompt: str, api_key: str, part_en: str = "", part_ka: str = "") -> str:
+    """Generate 3D Pixar-style image using Imagen. Returns path to saved /tmp file."""
     payload = {
         "instances": [{"prompt": prompt}],
         "parameters": {
@@ -56,6 +57,13 @@ def generate_post_image(prompt: str, api_key: str) -> str:
         tmp.close()
 
         logger.info("Image generated and saved: %s", tmp.name)
+
+        if part_en and part_ka:
+            from src.image_overlay import add_overlay
+            final_path = add_overlay(tmp.name, part_en, part_ka)
+            os.remove(tmp.name)
+            return final_path
+
         return tmp.name
     except Exception as exc:
         logger.error("Imagen generation failed: %s", exc)

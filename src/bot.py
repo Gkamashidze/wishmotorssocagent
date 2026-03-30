@@ -36,7 +36,7 @@ async def _generate_post(config: Config, category: str) -> dict[str, Any]:
     part_en, part_ka = extract_parts_from_text(raw_text)
     post_text = clean_text(raw_text)
     full_text = post_text + CONTACT_INFO
-    image_path = generate_post_image(build_image_prompt(part_en, part_ka), config.gemini_api_key)
+    image_path = generate_post_image(build_image_prompt(part_en, part_ka), config.gemini_api_key, part_en=part_en, part_ka=part_ka)
     post_id = save_post(category, full_text, image_path)
     return {"post_id": post_id, "text": full_text, "image_path": image_path, "category": category}
 
