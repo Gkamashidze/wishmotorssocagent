@@ -3,14 +3,11 @@ import base64
 import logging
 import tempfile
 import requests
+from google import genai
 
 logger = logging.getLogger(__name__)
 
 _TEXT_MODEL = "gemini-2.0-flash"
-_TEXT_API = (
-    "https://generativelanguage.googleapis.com/v1beta"
-    "/models/{model}:generateContent"
-)
 _IMAGE_API = (
     "https://generativelanguage.googleapis.com/v1beta"
     "/models/imagen-4.0-generate-001:predict"
@@ -18,20 +15,15 @@ _IMAGE_API = (
 
 
 def generate_post_text(prompt: str, api_key: str) -> str:
-    """Generate Georgian post text using Gemini v1 REST API."""
-    url = _TEXT_API.format(model=_TEXT_MODEL)
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    """Generate Georgian post text using Gemini SDK."""
+    client = genai.Client(api_key=api_key)
     try:
-        response = requests.post(
-            url,
-            json=payload,
-            params={"key": api_key},
-            timeout=60,
+        response = client.models.generate_content(
+            model=_TEXT_MODEL,
+            contents=prompt,
         )
-        response.raise_for_status()
-        text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
-        logger.info("Text generated successfully (%d chars)", len(text))
-        return text
+        logger.info("Text generated successfully (%d chars)", len(response.text))
+        return response.text
     except Exception as exc:
         logger.error("Gemini text generation failed: %s", exc)
         raise
