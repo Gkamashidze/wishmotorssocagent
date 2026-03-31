@@ -56,6 +56,9 @@ def add_overlay(image_path: str, part_en: str, part_ka: str) -> str:
 
     fnt_brand = ImageFont.truetype(font_lat, size=int(height * 0.040))
 
+    # Replace characters Georgian font cannot render
+    part_ka = part_ka.replace("/", " — ").replace("|", " — ").replace("\\", " — ")
+
     # — Georgian part name: auto-size to fit banner width —
     max_text_width = int(width * 0.90)
     font_size = int(height * 0.075)
