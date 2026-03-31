@@ -1,6 +1,7 @@
 from __future__ import annotations
 import logging
 import os
+import re
 import requests
 from PIL import Image, ImageDraw, ImageFont
 
@@ -56,8 +57,10 @@ def add_overlay(image_path: str, part_en: str, part_ka: str) -> str:
 
     fnt_brand = ImageFont.truetype(font_lat, size=int(height * 0.040))
 
-    # Replace characters Georgian font cannot render
-    part_ka = part_ka.replace("/", " — ").replace("|", " — ").replace("\\", " — ")
+    # Strip any character outside Georgian Unicode blocks — NotoSansGeorgian has no Latin/ASCII glyphs
+    # Georgian: U+10A0-U+10FF (Mkhedruli + Asomtavruli), U+2D00-U+2D2F (Georgian Supplement)
+    part_ka = re.sub(r'[^\u10A0-\u10FF\u2D00-\u2D2F\s]', ' ', part_ka)
+    part_ka = re.sub(r' {2,}', ' ', part_ka).strip()
 
     # — Georgian part name: auto-size to fit banner width —
     max_text_width = int(width * 0.90)
