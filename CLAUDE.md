@@ -1,7 +1,11 @@
 # Project: wishmotorssocagent
 
+## სესიის დასაწყისი — სავალდებულო
+სესიის დაწყებისთანავე წაიკითხე `prompt.md` — იქ არის პროექტის სრული კონტექსტი,
+სამუშაო წესები და ბოლო სტატუსი. წაკითხვის შემდეგ მიპასუხე მხოლოდ **"მზად ვარ"**.
+
 ## Overview
-Project created with /setup. Idea and tech stack will be defined by the user.
+Wish Motors Social Agent — SsangYong სერვის ცენტრის Facebook bot (ბათუმი).
 
 ## How Claude Should Work With the User
 - User writes prompts, not code — explain everything in plain language
