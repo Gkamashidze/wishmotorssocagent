@@ -85,6 +85,7 @@ def publish_to_facebook(
     page_post_id = _post_photo(page_id, access_token, message, image_path)
     page_url = verify_post(page_post_id, access_token)
 
+    group_error = ""
     try:
         group_post_id = _post_photo(group_id, access_token, message, image_path)
     except Exception as exc:
@@ -93,9 +94,11 @@ def publish_to_facebook(
             _MAX_ATTEMPTS, page_post_id, exc,
         )
         group_post_id = "failed"
+        group_error = str(exc)[:300]
 
     return {
         "page_post_id": page_post_id,
         "group_post_id": group_post_id,
         "page_url": page_url or "",
+        "group_error": group_error,
     }

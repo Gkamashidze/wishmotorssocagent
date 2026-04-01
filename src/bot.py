@@ -178,7 +178,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             page_line = "✅ გვერდი: გამოქვეყნდა"
             if result.get("page_url"):
                 page_line += f"\n🔗 {result['page_url']}"
-            group_line = "✅ ჯგუფი: გამოქვეყნდა" if group_ok else "⚠️ ჯგუფი: ვერ გამოქვეყნდა"
+            if group_ok:
+                group_line = "✅ ჯგუფი: გამოქვეყნდა"
+            else:
+                group_line = f"⚠️ ჯგუფი: ვერ გამოქვეყნდა\n❗ {result.get('group_error', 'უცნობი შეცდომა')}"
             await context.bot.send_message(
                 chat_id=config.telegram_chat_id,
                 text=f"{page_line}\n{group_line}",
