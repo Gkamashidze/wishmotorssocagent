@@ -13,7 +13,7 @@ from src.config import load_config, Config
 from src.database import get_last_category, set_last_category, save_post, mark_published, mark_skipped
 from src.content import next_category, build_text_prompt, build_image_prompt, extract_parts_from_text, clean_text, CONTACT_INFO
 from src.gemini_client import generate_post_text, generate_post_image
-from src.facebook_client import publish_to_facebook
+from src.facebook_client import publish_to_facebook, delete_facebook_post
 
 logging.basicConfig(
     format="%(asctime)s %(name)s %(levelname)s %(message)s",
@@ -40,6 +40,12 @@ def _keyboard(post_id: int) -> InlineKeyboardMarkup:
 def _retry_keyboard(post_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[
         InlineKeyboardButton("🔁 ხელახლა სცადე", callback_data=f"publish_{post_id}"),
+    ]])
+
+
+def _delete_keyboard(fb_post_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("🗑️ პოსტის წაშლა", callback_data=f"delete_{fb_post_id}"),
     ]])
 
 
@@ -186,6 +192,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await context.bot.send_message(
                 chat_id=config.telegram_chat_id,
                 text=f"{page_line}\n{group_line}",
+                reply_markup=_delete_keyboard(result["page_post_id"]),
             )
         except Exception as exc:
             logger.error("Facebook publish failed: %s", exc)
@@ -193,6 +200,30 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 chat_id=config.telegram_chat_id,
                 text=f"❌ Facebook-ზე ვერ გამოქვეყნდა.\n\nშეცდომა: {str(exc)[:400]}",
                 reply_markup=_retry_keyboard(pending["post_id"]),
+            )
+
+    elif action == "delete":
+        # post_id_str here is the Facebook post ID (e.g. "page_id_post_id")
+        fb_post_id = post_id_str
+        config: Config = context.bot_data["config"]
+        await query.edit_message_reply_markup(reply_markup=None)
+        try:
+            deleted = await asyncio.to_thread(
+                delete_facebook_post, fb_post_id, config.fb_page_access_token
+            )
+            if deleted:
+                await context.bot.send_message(
+                    chat_id=config.telegram_chat_id, text="🗑️ პოსტი წაიშალა Facebook გვერდიდან."
+                )
+            else:
+                await context.bot.send_message(
+                    chat_id=config.telegram_chat_id, text="⚠️ პოსტი ვერ წაიშალა — შეიძლება უკვე წაშლილია."
+                )
+        except Exception as exc:
+            logger.error("Facebook delete failed: %s", exc)
+            await context.bot.send_message(
+                chat_id=config.telegram_chat_id,
+                text=f"❌ წაშლა ვერ მოხდა.\n{str(exc)[:300]}",
             )
 
     elif action == "regenerate":

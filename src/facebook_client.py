@@ -77,6 +77,28 @@ def _share_link_to_group(group_id: str, access_token: str, page_url: str) -> str
     return _retry(_call)
 
 
+def delete_facebook_post(post_id: str, access_token: str) -> bool:
+    """Delete a Facebook post by ID. Returns True if deleted successfully."""
+    try:
+        response = requests.delete(
+            f"{_GRAPH_BASE}/{post_id}",
+            params={"access_token": access_token},
+            timeout=30,
+        )
+        if response.ok:
+            logger.info("Deleted Facebook post: %s", post_id)
+            return True
+        fb_error = response.json().get("error", {})
+        msg = fb_error.get("message", response.text[:200])
+        code = fb_error.get("code", response.status_code)
+        raise requests.HTTPError(f"Facebook error {code}: {msg}", response=response)
+    except requests.HTTPError:
+        raise
+    except Exception as exc:
+        logger.error("Delete request failed: %s", exc)
+        raise
+
+
 def verify_post(post_id: str, access_token: str) -> str | None:
     """Fetch permalink URL for a published post. Returns URL or None on failure."""
     try:
