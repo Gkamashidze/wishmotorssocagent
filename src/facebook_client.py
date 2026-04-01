@@ -72,22 +72,23 @@ def verify_post(post_id: str, access_token: str) -> str | None:
 def publish_to_facebook(
     page_id: str,
     group_id: str,
-    access_token: str,
+    page_access_token: str,
+    user_access_token: str,
     message: str,
     image_path: str,
 ) -> dict[str, str]:
-    """Publish to Facebook page and group.
+    """Publish to Facebook page (page token) and group (user token).
 
     Page publish is mandatory — raises on failure.
     Group publish failure is logged but does not raise (page post stays live).
-    Returns dict with keys: page_post_id, group_post_id, page_url.
+    Returns dict with keys: page_post_id, group_post_id, page_url, group_error.
     """
-    page_post_id = _post_photo(page_id, access_token, message, image_path)
-    page_url = verify_post(page_post_id, access_token)
+    page_post_id = _post_photo(page_id, page_access_token, message, image_path)
+    page_url = verify_post(page_post_id, page_access_token)
 
     group_error = ""
     try:
-        group_post_id = _post_photo(group_id, access_token, message, image_path)
+        group_post_id = _post_photo(group_id, user_access_token, message, image_path)
     except Exception as exc:
         logger.error(
             "Group publish failed after %d attempts (page post %s is live): %s",

@@ -160,7 +160,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 publish_to_facebook,
                 page_id=config.fb_page_id,
                 group_id=config.fb_group_id,
-                access_token=config.fb_page_access_token,
+                page_access_token=config.fb_page_access_token,
+                user_access_token=config.fb_user_access_token,
                 message=pending["text"],
                 image_path=pending["image_path"],
             )

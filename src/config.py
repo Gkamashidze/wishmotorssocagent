@@ -14,6 +14,7 @@ class Config:
     fb_page_access_token: str
     fb_page_id: str
     fb_group_id: str
+    fb_user_access_token: str  # User token with publish_to_groups — for group posting
 
 
 def load_config() -> Config:
@@ -25,6 +26,7 @@ def load_config() -> Config:
         "FB_PAGE_ACCESS_TOKEN",
         "FB_PAGE_ID",
         "FB_GROUP_ID",
+        "FB_USER_ACCESS_TOKEN",
     ]
     missing = [var for var in required if not os.environ.get(var)]
     if missing:
@@ -37,4 +39,5 @@ def load_config() -> Config:
         fb_page_access_token=os.environ["FB_PAGE_ACCESS_TOKEN"],
         fb_page_id=os.environ["FB_PAGE_ID"],
         fb_group_id=os.environ["FB_GROUP_ID"],
+        fb_user_access_token=os.environ["FB_USER_ACCESS_TOKEN"],
     )
