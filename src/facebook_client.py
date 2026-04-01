@@ -26,7 +26,7 @@ def _retry(func, *args, **kwargs):
 
 
 def _post_photo(target_id: str, access_token: str, caption: str, image_path: str) -> str:
-    """Upload photo with caption to a Facebook page or group. Returns post ID."""
+    """Upload photo with caption to a Facebook page. Returns post ID."""
     url = f"{_GRAPH_BASE}/{target_id}/photos"
 
     def _call():
@@ -52,13 +52,37 @@ def _post_photo(target_id: str, access_token: str, caption: str, image_path: str
     return _retry(_call)
 
 
+def _share_link_to_group(group_id: str, access_token: str, page_url: str) -> str:
+    """Share a page post URL to a group as a rich link preview. Returns post ID."""
+    url = f"{_GRAPH_BASE}/{group_id}/feed"
+
+    def _call():
+        response = requests.post(
+            url,
+            params={"access_token": access_token, "link": page_url},
+            timeout=60,
+        )
+        if not response.ok:
+            fb_error = response.json().get("error", {})
+            msg = fb_error.get("message", response.text[:200])
+            code = fb_error.get("code", response.status_code)
+            logger.error("Facebook group share error %s: %s", code, msg)
+            raise requests.HTTPError(
+                f"Facebook error {code}: {msg}", response=response
+            )
+        post_id = response.json().get("id", "unknown")
+        logger.info("Shared link to group %s → post_id=%s", group_id, post_id)
+        return post_id
+
+    return _retry(_call)
+
+
 def verify_post(post_id: str, access_token: str) -> str | None:
     """Fetch permalink URL for a published post. Returns URL or None on failure."""
     try:
         response = requests.get(
             f"{_GRAPH_BASE}/{post_id}",
-            headers={"Authorization": f"Bearer {access_token}"},
-            params={"fields": "permalink_url"},
+            params={"access_token": access_token, "fields": "permalink_url"},
             timeout=15,
         )
         if response.ok:
@@ -76,25 +100,30 @@ def publish_to_facebook(
     message: str,
     image_path: str,
 ) -> dict[str, str]:
-    """Publish to Facebook page (page token) and group (user token).
+    """Publish photo to page, then share the page post link to the group.
 
     Page publish is mandatory — raises on failure.
-    Group publish failure is logged but does not raise (page post stays live).
+    Group share failure is logged but does not raise (page post stays live).
     Returns dict with keys: page_post_id, group_post_id, page_url, group_error.
     """
     page_post_id = _post_photo(page_id, page_access_token, message, image_path)
     page_url = verify_post(page_post_id, page_access_token)
 
     group_error = ""
-    try:
-        group_post_id = _post_photo(group_id, user_access_token, message, image_path)
-    except Exception as exc:
-        logger.error(
-            "Group publish failed after %d attempts (page post %s is live): %s",
-            _MAX_ATTEMPTS, page_post_id, exc,
-        )
-        group_post_id = "failed"
-        group_error = str(exc)[:300]
+    group_post_id = "failed"
+
+    if not page_url:
+        group_error = "გვერდის ბმული ვერ მოიძებნა — ჯგუფში გაზიარება შეუძლებელია"
+        logger.error("Cannot share to group: page_url is empty for post %s", page_post_id)
+    else:
+        try:
+            group_post_id = _share_link_to_group(group_id, user_access_token, page_url)
+        except Exception as exc:
+            logger.error(
+                "Group share failed after %d attempts (page post %s is live): %s",
+                _MAX_ATTEMPTS, page_post_id, exc,
+            )
+            group_error = str(exc)[:300]
 
     return {
         "page_post_id": page_post_id,
