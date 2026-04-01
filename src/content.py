@@ -1,4 +1,5 @@
 from __future__ import annotations
+import re
 
 CONTACT_INFO = """
 🚚 უფასო მიტანა ბათუმში! (📍 თევდორე მღვდლის #6)
@@ -106,7 +107,6 @@ def extract_parts_from_text(text: str) -> tuple[str, str]:
 
 def clean_text(text: str) -> str:
     """Remove PART_EN/PART_KA lines and strip markdown symbols from post text."""
-    import re
     lines = [l for l in text.splitlines() if not l.startswith("PART_EN:") and not l.startswith("PART_KA:")]
     cleaned = []
     for line in lines:

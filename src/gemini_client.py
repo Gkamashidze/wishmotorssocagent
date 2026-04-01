@@ -3,6 +3,7 @@ import base64
 import logging
 import os
 import tempfile
+import time
 import requests
 from google import genai
 
@@ -13,18 +14,45 @@ _IMAGE_API = (
     "https://generativelanguage.googleapis.com/v1beta"
     "/models/imagen-4.0-generate-001:predict"
 )
+_MAX_ATTEMPTS = 3
+
+# Module-level client cache — one client per API key, not re-created on every call
+_client_cache: dict[str, genai.Client] = {}
+
+
+def _get_client(api_key: str) -> genai.Client:
+    if api_key not in _client_cache:
+        _client_cache[api_key] = genai.Client(api_key=api_key)
+    return _client_cache[api_key]
+
+
+def _retry(func, *args, **kwargs):
+    """Run func with exponential backoff. Raises on final failure."""
+    for attempt in range(_MAX_ATTEMPTS):
+        try:
+            return func(*args, **kwargs)
+        except Exception as exc:
+            if attempt == _MAX_ATTEMPTS - 1:
+                raise
+            wait = 2 ** attempt * 3  # 3s, 6s
+            logger.warning(
+                "Attempt %d/%d failed: %s. Retrying in %ds...",
+                attempt + 1, _MAX_ATTEMPTS, exc, wait,
+            )
+            time.sleep(wait)
 
 
 def generate_post_text(prompt: str, api_key: str) -> str:
     """Generate Georgian post text using Gemini SDK."""
-    client = genai.Client(api_key=api_key)
-    try:
-        response = client.models.generate_content(
-            model=_TEXT_MODEL,
-            contents=prompt,
-        )
+    client = _get_client(api_key)
+
+    def _call():
+        response = client.models.generate_content(model=_TEXT_MODEL, contents=prompt)
         logger.info("Text generated successfully (%d chars)", len(response.text))
         return response.text
+
+    try:
+        return _retry(_call)
     except Exception as exc:
         logger.error("Gemini text generation failed: %s", exc)
         raise
@@ -41,7 +69,8 @@ def generate_post_image(prompt: str, api_key: str, part_en: str = "", part_ka: s
             "personGeneration": "dont_allow",
         },
     }
-    try:
+
+    def _call():
         response = requests.post(
             _IMAGE_API,
             json=payload,
@@ -49,7 +78,10 @@ def generate_post_image(prompt: str, api_key: str, part_en: str = "", part_ka: s
             timeout=90,
         )
         response.raise_for_status()
-        image_b64 = response.json()["predictions"][0]["bytesBase64Encoded"]
+        return response.json()["predictions"][0]["bytesBase64Encoded"]
+
+    try:
+        image_b64 = _retry(_call)
         image_bytes = base64.b64decode(image_b64)
 
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg", dir="/tmp")

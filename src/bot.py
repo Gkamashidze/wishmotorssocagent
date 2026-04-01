@@ -1,7 +1,9 @@
 from __future__ import annotations
+import asyncio
 import logging
 import os
-from datetime import time, timezone
+import time
+from datetime import datetime, timezone as _tz
 from typing import Any
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -19,8 +21,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# In-memory store for pending approvals: post_id_str → post data
+# In-memory store for pending approvals: post_id_str → post data + timestamp
 _pending: dict[str, dict[str, Any]] = {}
+_PENDING_TTL = 48 * 3600  # 48 hours — entries older than this are expired
+
+# Rate limiting for /generate: chat_id → last call timestamp
+_last_generate: dict[int, float] = {}
+_GENERATE_COOLDOWN = 120  # 2 minutes between manual triggers
 
 
 def _keyboard(post_id: int) -> InlineKeyboardMarkup:
@@ -31,19 +38,31 @@ def _keyboard(post_id: int) -> InlineKeyboardMarkup:
 
 
 async def _generate_post(config: Config, category: str) -> dict[str, Any]:
-    """Generate text + image for the given category. Returns post data dict."""
-    raw_text = generate_post_text(build_text_prompt(category), config.gemini_api_key)
+    """Generate text + image for the given category. Returns post data dict.
+
+    All blocking I/O (Gemini SDK, requests, SQLite) runs in a thread pool so
+    the Telegram event loop is never blocked.
+    """
+    raw_text = await asyncio.to_thread(
+        generate_post_text, build_text_prompt(category), config.gemini_api_key
+    )
     part_en, part_ka = extract_parts_from_text(raw_text)
     post_text = clean_text(raw_text)
     full_text = post_text + CONTACT_INFO
-    image_path = generate_post_image(build_image_prompt(part_en, part_ka), config.gemini_api_key, part_en=part_en, part_ka=part_ka)
-    post_id = save_post(category, full_text, image_path)
+    image_path = await asyncio.to_thread(
+        generate_post_image,
+        build_image_prompt(part_en, part_ka),
+        config.gemini_api_key,
+        part_en=part_en,
+        part_ka=part_ka,
+    )
+    post_id = await asyncio.to_thread(save_post, category, full_text, image_path)
     return {"post_id": post_id, "text": full_text, "image_path": image_path, "category": category}
 
 
 async def _send_for_approval(bot, chat_id: int, post_data: dict[str, Any]) -> None:
     """Send generated post to Telegram with approve/regenerate buttons."""
-    _pending[str(post_data["post_id"])] = post_data
+    _pending[str(post_data["post_id"])] = {**post_data, "_ts": time.time()}
     with open(post_data["image_path"], "rb") as img:
         await bot.send_photo(
             chat_id=chat_id,
@@ -60,7 +79,17 @@ async def generate_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     config: Config = context.bot_data["config"]
     if update.effective_chat.id != config.telegram_chat_id:
         return  # ignore requests from other chats
-    category = next_category(get_last_category())
+
+    # Rate limit: prevent accidental double-triggers
+    now = time.time()
+    last = _last_generate.get(update.effective_chat.id, 0.0)
+    if now - last < _GENERATE_COOLDOWN:
+        remaining = int(_GENERATE_COOLDOWN - (now - last))
+        await update.message.reply_text(f"⏳ გთხოვ დაელოდო {remaining} წამი.")
+        return
+    _last_generate[update.effective_chat.id] = now
+
+    category = next_category(await asyncio.to_thread(get_last_category))
     await update.message.reply_text(f"⏳ ვქმნი პოსტს ({category})... (1–2 წუთი)")
     try:
         post_data = await _generate_post(config, category)
@@ -74,7 +103,7 @@ async def generate_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 async def scheduled_post(context: ContextTypes.DEFAULT_TYPE) -> None:
     """Triggered by scheduler — generate new post and send to Telegram."""
     config: Config = context.bot_data["config"]
-    category = next_category(get_last_category())
+    category = next_category(await asyncio.to_thread(get_last_category))
     logger.info("Scheduled post triggered: category=%s", category)
     try:
         await context.bot.send_message(
@@ -97,8 +126,19 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     query = update.callback_query
     await query.answer()
 
-    action, post_id_str = query.data.split("_", 1)
+    # Guard against malformed callback data
+    parts = query.data.split("_", 1)
+    if len(parts) != 2:
+        logger.warning("Unexpected callback data: %r", query.data)
+        return
+    action, post_id_str = parts
+
     pending = _pending.get(post_id_str)
+
+    # Expire stale pending entries (older than _PENDING_TTL)
+    if pending and time.time() - pending.get("_ts", 0) > _PENDING_TTL:
+        _pending.pop(post_id_str, None)
+        pending = None
 
     if not pending:
         await query.edit_message_caption(caption="⏰ ვადა გავიდა. ახალი ავტომატურად მოვა.")
@@ -110,15 +150,16 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await query.edit_message_reply_markup(reply_markup=None)
         await context.bot.send_message(chat_id=config.telegram_chat_id, text="📤 ვაქვეყნებ Facebook-ზე...")
         try:
-            publish_to_facebook(
+            await asyncio.to_thread(
+                publish_to_facebook,
                 page_id=config.fb_page_id,
                 group_id=config.fb_group_id,
                 access_token=config.fb_page_access_token,
                 message=pending["text"],
                 image_path=pending["image_path"],
             )
-            mark_published(pending["post_id"])
-            set_last_category(pending["category"])
+            await asyncio.to_thread(mark_published, pending["post_id"])
+            await asyncio.to_thread(set_last_category, pending["category"])
             _pending.pop(post_id_str, None)
             try:
                 os.remove(pending["image_path"])
@@ -138,7 +179,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     elif action == "regenerate":
         category = pending["category"]
         old_image = pending.get("image_path")
-        mark_skipped(pending["post_id"])
+        await asyncio.to_thread(mark_skipped, pending["post_id"])
         _pending.pop(post_id_str, None)
         if old_image:
             try:
@@ -167,7 +208,7 @@ def main() -> None:
     # Monday=0, Thursday=3 at 10:00 Tbilisi (UTC+4) = 06:00 UTC
     app.job_queue.run_daily(
         callback=scheduled_post,
-        time=time(6, 0, 0, tzinfo=timezone.utc),
+        time=datetime.now(_tz.utc).replace(hour=6, minute=0, second=0, microsecond=0).timetz(),
         days=(0, 3),
         name="wish_motors_post",
         job_kwargs={"misfire_grace_time": 60},

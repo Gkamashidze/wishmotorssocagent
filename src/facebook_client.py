@@ -1,26 +1,49 @@
 from __future__ import annotations
 import logging
+import time
 import requests
 
 logger = logging.getLogger(__name__)
 
 _GRAPH_BASE = "https://graph.facebook.com/v21.0"
+_MAX_ATTEMPTS = 3
+
+
+def _retry(func, *args, **kwargs):
+    """Run func with exponential backoff. Raises on final failure."""
+    for attempt in range(_MAX_ATTEMPTS):
+        try:
+            return func(*args, **kwargs)
+        except Exception as exc:
+            if attempt == _MAX_ATTEMPTS - 1:
+                raise
+            wait = 2 ** attempt * 3  # 3s, 6s
+            logger.warning(
+                "Facebook attempt %d/%d failed: %s. Retrying in %ds...",
+                attempt + 1, _MAX_ATTEMPTS, exc, wait,
+            )
+            time.sleep(wait)
 
 
 def _post_photo(target_id: str, access_token: str, caption: str, image_path: str) -> str:
     """Upload photo with caption to a Facebook page or group. Returns post ID."""
     url = f"{_GRAPH_BASE}/{target_id}/photos"
-    with open(image_path, "rb") as image_file:
-        response = requests.post(
-            url,
-            data={"caption": caption, "access_token": access_token},
-            files={"source": image_file},
-            timeout=60,
-        )
-    response.raise_for_status()
-    post_id = response.json().get("id", "unknown")
-    logger.info("Posted to %s → post_id=%s", target_id, post_id)
-    return post_id
+
+    def _call():
+        with open(image_path, "rb") as image_file:
+            response = requests.post(
+                url,
+                headers={"Authorization": f"Bearer {access_token}"},
+                data={"caption": caption},
+                files={"source": image_file},
+                timeout=60,
+            )
+        response.raise_for_status()
+        post_id = response.json().get("id", "unknown")
+        logger.info("Posted to %s → post_id=%s", target_id, post_id)
+        return post_id
+
+    return _retry(_call)
 
 
 def publish_to_facebook(
@@ -30,7 +53,22 @@ def publish_to_facebook(
     message: str,
     image_path: str,
 ) -> tuple[str, str]:
-    """Publish to Facebook page and group. Returns (page_post_id, group_post_id)."""
+    """Publish to Facebook page and group.
+
+    Page publish is mandatory — raises on failure.
+    Group publish failure is logged but does not raise, so the post is still
+    marked as published (it is live on the page).
+    Returns (page_post_id, group_post_id).
+    """
     page_post_id = _post_photo(page_id, access_token, message, image_path)
-    group_post_id = _post_photo(group_id, access_token, message, image_path)
+
+    try:
+        group_post_id = _post_photo(group_id, access_token, message, image_path)
+    except Exception as exc:
+        logger.error(
+            "Group publish failed after %d attempts (page post %s is live): %s",
+            _MAX_ATTEMPTS, page_post_id, exc,
+        )
+        group_post_id = "failed"
+
     return page_post_id, group_post_id

@@ -1,12 +1,26 @@
 from __future__ import annotations
 import logging
+import os
 from datetime import datetime, timezone
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 logger = logging.getLogger(__name__)
 
-engine = create_engine("sqlite:////tmp/wishmotors.db", connect_args={"check_same_thread": False})
+
+def _resolve_db_url() -> str:
+    if url := os.environ.get("DATABASE_URL"):
+        return url
+    if os.path.isdir("/data"):
+        return "sqlite:////data/wishmotors.db"
+    logger.warning(
+        "No persistent storage found — using /tmp/wishmotors.db. "
+        "Data will be lost on restart. Mount a Railway Volume at /data to persist."
+    )
+    return "sqlite:////tmp/wishmotors.db"
+
+
+engine = create_engine(_resolve_db_url(), connect_args={"check_same_thread": False})
 Session = sessionmaker(bind=engine)
 
 
