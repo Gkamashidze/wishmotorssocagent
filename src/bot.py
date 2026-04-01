@@ -37,6 +37,12 @@ def _keyboard(post_id: int) -> InlineKeyboardMarkup:
     ]])
 
 
+def _retry_keyboard(post_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("🔁 ხელახლა სცადე", callback_data=f"publish_{post_id}"),
+    ]])
+
+
 async def _generate_post(config: Config, category: str) -> dict[str, Any]:
     """Generate text + image for the given category. Returns post data dict.
 
@@ -182,6 +188,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await context.bot.send_message(
                 chat_id=config.telegram_chat_id,
                 text=f"❌ Facebook-ზე ვერ გამოქვეყნდა.\n\nშეცდომა: {str(exc)[:400]}",
+                reply_markup=_retry_keyboard(pending["post_id"]),
             )
 
     elif action == "regenerate":
