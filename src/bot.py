@@ -150,7 +150,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await query.edit_message_reply_markup(reply_markup=None)
         await context.bot.send_message(chat_id=config.telegram_chat_id, text="📤 ვაქვეყნებ Facebook-ზე...")
         try:
-            await asyncio.to_thread(
+            result = await asyncio.to_thread(
                 publish_to_facebook,
                 page_id=config.fb_page_id,
                 group_id=config.fb_group_id,
@@ -165,9 +165,17 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 os.remove(pending["image_path"])
             except OSError:
                 pass
+
+            # Build verification report
+            page_ok = result["page_post_id"] != "failed"
+            group_ok = result["group_post_id"] != "failed"
+            page_line = "✅ გვერდი: გამოქვეყნდა"
+            if result.get("page_url"):
+                page_line += f"\n🔗 {result['page_url']}"
+            group_line = "✅ ჯგუფი: გამოქვეყნდა" if group_ok else "⚠️ ჯგუფი: ვერ გამოქვეყნდა"
             await context.bot.send_message(
                 chat_id=config.telegram_chat_id,
-                text="✅ გამოქვეყნდა! Facebook გვერდსა და ჯგუფში.",
+                text=f"{page_line}\n{group_line}",
             )
         except Exception as exc:
             logger.error("Facebook publish failed: %s", exc)

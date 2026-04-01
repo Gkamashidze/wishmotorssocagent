@@ -46,21 +46,37 @@ def _post_photo(target_id: str, access_token: str, caption: str, image_path: str
     return _retry(_call)
 
 
+def verify_post(post_id: str, access_token: str) -> str | None:
+    """Fetch permalink URL for a published post. Returns URL or None on failure."""
+    try:
+        response = requests.get(
+            f"{_GRAPH_BASE}/{post_id}",
+            headers={"Authorization": f"Bearer {access_token}"},
+            params={"fields": "permalink_url"},
+            timeout=15,
+        )
+        if response.ok:
+            return response.json().get("permalink_url")
+    except Exception as exc:
+        logger.warning("Could not fetch post URL for %s: %s", post_id, exc)
+    return None
+
+
 def publish_to_facebook(
     page_id: str,
     group_id: str,
     access_token: str,
     message: str,
     image_path: str,
-) -> tuple[str, str]:
+) -> dict[str, str]:
     """Publish to Facebook page and group.
 
     Page publish is mandatory — raises on failure.
-    Group publish failure is logged but does not raise, so the post is still
-    marked as published (it is live on the page).
-    Returns (page_post_id, group_post_id).
+    Group publish failure is logged but does not raise (page post stays live).
+    Returns dict with keys: page_post_id, group_post_id, page_url.
     """
     page_post_id = _post_photo(page_id, access_token, message, image_path)
+    page_url = verify_post(page_post_id, access_token)
 
     try:
         group_post_id = _post_photo(group_id, access_token, message, image_path)
@@ -71,4 +87,8 @@ def publish_to_facebook(
         )
         group_post_id = "failed"
 
-    return page_post_id, group_post_id
+    return {
+        "page_post_id": page_post_id,
+        "group_post_id": group_post_id,
+        "page_url": page_url or "",
+    }
