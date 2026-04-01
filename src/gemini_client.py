@@ -38,7 +38,7 @@ def generate_post_image(prompt: str, api_key: str, part_en: str = "", part_ka: s
             "sampleCount": 1,
             "aspectRatio": "1:1",
             "safetyFilterLevel": "block_some",
-            "personGeneration": "allow_adult",
+            "personGeneration": "dont_allow",
         },
     }
     try:

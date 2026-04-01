@@ -85,7 +85,7 @@ def build_image_prompt(part_en: str, part_ka: str) -> str:
         f"No text labels or tags on the parts themselves. "
         f"Background: garage walls with large bold sign reading 'WISH MOTORS' in navy blue letters. "
         f"SsangYong car lifted on a hydraulic lift in background. "
-        f"Character: friendly cartoon mechanic in navy blue uniform pointing at the {part_en}. "
+        f"No people, no humans, no characters, no faces. "
         f"Colors: navy blue #1B2B5C and cyan #00B4D8, white accents. "
         f"Style: professional, clean, bright, high quality social media poster. "
         f"Format: square 1:1, vibrant colors, sharp details."

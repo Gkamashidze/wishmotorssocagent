@@ -108,7 +108,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     if action == "publish":
         await query.edit_message_reply_markup(reply_markup=None)
-        await context.bot.send_message(chat_id=config.telegram_chat_id, text="📤 ვქვეყნებ Facebook-ზე...")
+        await context.bot.send_message(chat_id=config.telegram_chat_id, text="📤 ვაქვეყნებ Facebook-ზე...")
         try:
             publish_to_facebook(
                 page_id=config.fb_page_id,
@@ -170,6 +170,7 @@ def main() -> None:
         time=time(6, 0, 0, tzinfo=timezone.utc),
         days=(0, 3),
         name="wish_motors_post",
+        job_kwargs={"misfire_grace_time": 60},
     )
 
     app.add_handler(CommandHandler("generate", generate_command))
