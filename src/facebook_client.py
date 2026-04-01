@@ -33,12 +33,18 @@ def _post_photo(target_id: str, access_token: str, caption: str, image_path: str
         with open(image_path, "rb") as image_file:
             response = requests.post(
                 url,
-                headers={"Authorization": f"Bearer {access_token}"},
-                data={"caption": caption},
+                data={"caption": caption, "access_token": access_token},
                 files={"source": image_file},
                 timeout=60,
             )
-        response.raise_for_status()
+        if not response.ok:
+            fb_error = response.json().get("error", {})
+            msg = fb_error.get("message", response.text[:200])
+            code = fb_error.get("code", response.status_code)
+            logger.error("Facebook API error %s for %s: %s", code, target_id, msg)
+            raise requests.HTTPError(
+                f"Facebook error {code}: {msg}", response=response
+            )
         post_id = response.json().get("id", "unknown")
         logger.info("Posted to %s → post_id=%s", target_id, post_id)
         return post_id

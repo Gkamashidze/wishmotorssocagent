@@ -181,7 +181,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             logger.error("Facebook publish failed: %s", exc)
             await context.bot.send_message(
                 chat_id=config.telegram_chat_id,
-                text=f"❌ Facebook-ზე ვერ გამოქვეყნდა. შეამოწმე API token.\n{str(exc)[:300]}",
+                text=f"❌ Facebook-ზე ვერ გამოქვეყნდა.\n\nშეცდომა: {str(exc)[:400]}",
             )
 
     elif action == "regenerate":
