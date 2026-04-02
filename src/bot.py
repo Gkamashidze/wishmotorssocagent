@@ -23,7 +23,8 @@ logger = logging.getLogger(__name__)
 
 # In-memory store for pending approvals: post_id_str → post data + timestamp
 _pending: dict[str, dict[str, Any]] = {}
-_PENDING_TTL = 48 * 3600  # 48 hours — entries older than this are expired
+_AUTO_PUBLISH_TTL = 24 * 3600  # 24 hours — auto-publish if no user action
+_PENDING_TTL = 48 * 3600       # 48 hours — hard expiry after auto-publish window
 
 # Rate limiting for /generate: chat_id → last call timestamp
 _last_generate: dict[int, float] = {}
@@ -160,6 +161,52 @@ async def scheduled_post(context: ContextTypes.DEFAULT_TYPE) -> None:
         )
 
 
+async def auto_publish_check(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Runs every 30 minutes — auto-publishes posts that have been pending for over 24 hours."""
+    config: Config = context.bot_data["config"]
+    now = time.time()
+    expired = [
+        (pid, data) for pid, data in list(_pending.items())
+        if now - data.get("_ts", 0) >= _AUTO_PUBLISH_TTL
+    ]
+    for post_id_str, pending in expired:
+        logger.info("Auto-publishing post %s (pending >24h)", post_id_str)
+        await context.bot.send_message(
+            chat_id=config.telegram_chat_id,
+            text="⏰ 24 საათი გავიდა — ავტომატურად ვაქვეყნებ პოსტს...",
+        )
+        try:
+            result = await asyncio.to_thread(
+                publish_to_facebook,
+                page_id=config.fb_page_id,
+                page_access_token=config.fb_page_access_token,
+                message=pending["text"],
+                image_path=pending["image_path"],
+            )
+            await asyncio.to_thread(mark_published, pending["post_id"])
+            await asyncio.to_thread(set_last_category, pending["category"])
+            _pending.pop(post_id_str, None)
+            try:
+                os.remove(pending["image_path"])
+            except OSError:
+                pass
+            page_line = "✅ ავტომატურად გამოქვეყნდა"
+            if result.get("page_url"):
+                page_line += f"\n🔗 {result['page_url']}"
+            await context.bot.send_message(
+                chat_id=config.telegram_chat_id,
+                text=page_line,
+                reply_markup=_delete_keyboard(result["page_post_id"]),
+            )
+        except Exception as exc:
+            logger.error("Auto-publish failed for post %s: %s", post_id_str, exc)
+            await context.bot.send_message(
+                chat_id=config.telegram_chat_id,
+                text=f"❌ ავტომატური გამოქვეყნება ვერ მოხდა.\n{str(exc)[:300]}",
+                reply_markup=_retry_keyboard(pending["post_id"]),
+            )
+
+
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle ✅ გამოაქვეყნე or 🔄 თავიდან button presses."""
     query = update.callback_query
@@ -280,6 +327,13 @@ def main() -> None:
         days=(0, 3),
         name="wish_motors_post",
         job_kwargs={"misfire_grace_time": 60},
+    )
+
+    app.job_queue.run_repeating(
+        callback=auto_publish_check,
+        interval=1800,  # check every 30 minutes
+        first=60,
+        name="auto_publish_check",
     )
 
     app.add_handler(CommandHandler("generate", generate_command))
