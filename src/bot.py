@@ -29,6 +29,9 @@ _PENDING_TTL = 48 * 3600  # 48 hours — entries older than this are expired
 _last_generate: dict[int, float] = {}
 _GENERATE_COOLDOWN = 120  # 2 minutes between manual triggers
 
+# Active generation task (only one at a time)
+_active_generation: asyncio.Task | None = None
+
 
 def _keyboard(post_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[
@@ -88,6 +91,7 @@ async def _send_for_approval(bot, chat_id: int, post_data: dict[str, Any]) -> No
 
 async def generate_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/generate command — manually trigger post generation."""
+    global _active_generation
     config: Config = context.bot_data["config"]
     if update.effective_chat.id != config.telegram_chat_id:
         return  # ignore requests from other chats
@@ -102,14 +106,37 @@ async def generate_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     _last_generate[update.effective_chat.id] = now
 
     category = next_category(await asyncio.to_thread(get_last_category))
-    await update.message.reply_text(f"⏳ ვქმნი პოსტს ({category})... (1–2 წუთი)")
-    try:
-        post_data = await _generate_post(config, category)
-        post_data["config"] = config
-        await _send_for_approval(context.bot, config.telegram_chat_id, post_data)
-    except Exception as exc:
-        logger.error("Manual generate failed: %s", exc)
-        await update.message.reply_text(f"❌ შეცდომა:\n{str(exc)[:300]}")
+    await update.message.reply_text(f"⏳ ვქმნი პოსტს ({category})... (1–2 წუთი)\n\n/stop — გასაჩერებლად")
+
+    async def _run():
+        global _active_generation
+        try:
+            post_data = await _generate_post(config, category)
+            post_data["config"] = config
+            await _send_for_approval(context.bot, config.telegram_chat_id, post_data)
+        except asyncio.CancelledError:
+            await context.bot.send_message(chat_id=config.telegram_chat_id, text="🛑 გენერაცია გაჩერდა.")
+        except Exception as exc:
+            logger.error("Manual generate failed: %s", exc)
+            await context.bot.send_message(chat_id=config.telegram_chat_id, text=f"❌ შეცდომა:\n{str(exc)[:300]}")
+        finally:
+            _active_generation = None
+
+    _active_generation = asyncio.create_task(_run())
+
+
+async def stop_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/stop command — cancel active generation."""
+    global _active_generation
+    config: Config = context.bot_data["config"]
+    if update.effective_chat.id != config.telegram_chat_id:
+        return
+
+    if _active_generation and not _active_generation.done():
+        _active_generation.cancel()
+        await update.message.reply_text("🛑 გენერაცია გაჩერდა.")
+    else:
+        await update.message.reply_text("ℹ️ გენერაცია არ მიმდინარეობს.")
 
 
 async def scheduled_post(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -265,6 +292,7 @@ def main() -> None:
     )
 
     app.add_handler(CommandHandler("generate", generate_command))
+    app.add_handler(CommandHandler("stop", stop_command))
     app.add_handler(CallbackQueryHandler(handle_callback))
     logger.info("Wish Motors bot started. Posts scheduled: Mon & Thu 10:00 GEST.")
     app.run_polling(allowed_updates=["message", "callback_query"])
