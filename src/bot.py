@@ -26,6 +26,10 @@ _pending: dict[str, dict[str, Any]] = {}
 _AUTO_PUBLISH_TTL = 24 * 3600  # 24 hours — auto-publish if no user action
 _PENDING_TTL = 48 * 3600       # 48 hours — hard expiry after auto-publish window
 
+# In-memory store for published posts: fb_post_id → {text, image_path, _ts}
+# Kept for 24h after publish to allow restore after deletion
+_published: dict[str, dict[str, Any]] = {}
+
 # Rate limiting for /generate: chat_id → last call timestamp
 _last_generate: dict[int, float] = {}
 _GENERATE_COOLDOWN = 30  # 30 seconds between manual triggers
@@ -50,6 +54,12 @@ def _retry_keyboard(post_id: int) -> InlineKeyboardMarkup:
 def _delete_keyboard(fb_post_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[
         InlineKeyboardButton("🗑️ პოსტის წაშლა", callback_data=f"delete_{fb_post_id}"),
+    ]])
+
+
+def _restore_keyboard(fb_post_id: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("♻️ აღდგენა (24 სთ)", callback_data=f"restore_{fb_post_id}"),
     ]])
 
 
@@ -185,11 +195,12 @@ async def auto_publish_check(context: ContextTypes.DEFAULT_TYPE) -> None:
             )
             await asyncio.to_thread(mark_published, pending["post_id"])
             await asyncio.to_thread(set_last_category, pending["category"])
+            _published[result["page_post_id"]] = {
+                "text": pending["text"],
+                "image_path": pending["image_path"],
+                "_ts": time.time(),
+            }
             _pending.pop(post_id_str, None)
-            try:
-                os.remove(pending["image_path"])
-            except OSError:
-                pass
             page_line = "✅ ავტომატურად გამოქვეყნდა"
             if result.get("page_url"):
                 page_line += f"\n🔗 {result['page_url']}"
@@ -205,6 +216,19 @@ async def auto_publish_check(context: ContextTypes.DEFAULT_TYPE) -> None:
                 text=f"❌ ავტომატური გამოქვეყნება ვერ მოხდა.\n{str(exc)[:300]}",
                 reply_markup=_retry_keyboard(pending["post_id"]),
             )
+
+
+async def cleanup_published(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Runs every hour — removes published post cache entries older than 24h and deletes their images."""
+    cutoff = time.time() - 24 * 3600
+    expired = [pid for pid, data in list(_published.items()) if data.get("_ts", 0) < cutoff]
+    for pid in expired:
+        data = _published.pop(pid)
+        try:
+            os.remove(data["image_path"])
+        except OSError:
+            pass
+        logger.info("Cleaned up published post cache: %s", pid)
 
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -228,8 +252,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 delete_facebook_post, post_id_str, config.fb_page_access_token
             )
             if deleted:
+                restore_markup = None
+                if post_id_str in _published:
+                    restore_markup = _restore_keyboard(post_id_str)
                 await context.bot.send_message(
-                    chat_id=config.telegram_chat_id, text="🗑️ პოსტი წაიშალა Facebook გვერდიდან."
+                    chat_id=config.telegram_chat_id,
+                    text="🗑️ პოსტი წაიშალა Facebook გვერდიდან.",
+                    reply_markup=restore_markup,
                 )
             else:
                 await context.bot.send_message(
@@ -240,6 +269,48 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await context.bot.send_message(
                 chat_id=config.telegram_chat_id,
                 text=f"❌ წაშლა ვერ მოხდა.\n{str(exc)[:300]}",
+            )
+        return
+
+    # Restore action — republish deleted post from _published cache
+    if action == "restore":
+        config: Config = context.bot_data["config"]
+        saved = _published.get(post_id_str)
+        await query.edit_message_reply_markup(reply_markup=None)
+        if not saved:
+            await context.bot.send_message(
+                chat_id=config.telegram_chat_id,
+                text="⏰ 24 საათი გავიდა — აღდგენა შეუძლებელია.",
+            )
+            return
+        await context.bot.send_message(chat_id=config.telegram_chat_id, text="♻️ ვაღდგენ პოსტს Facebook-ზე...")
+        try:
+            result = await asyncio.to_thread(
+                publish_to_facebook,
+                page_id=config.fb_page_id,
+                page_access_token=config.fb_page_access_token,
+                message=saved["text"],
+                image_path=saved["image_path"],
+            )
+            _published.pop(post_id_str, None)
+            _published[result["page_post_id"]] = {
+                "text": saved["text"],
+                "image_path": saved["image_path"],
+                "_ts": time.time(),
+            }
+            page_line = "✅ პოსტი აღდგა Facebook გვერდზე"
+            if result.get("page_url"):
+                page_line += f"\n🔗 {result['page_url']}"
+            await context.bot.send_message(
+                chat_id=config.telegram_chat_id,
+                text=page_line,
+                reply_markup=_delete_keyboard(result["page_post_id"]),
+            )
+        except Exception as exc:
+            logger.error("Restore failed: %s", exc)
+            await context.bot.send_message(
+                chat_id=config.telegram_chat_id,
+                text=f"❌ აღდგენა ვერ მოხდა.\n{str(exc)[:300]}",
             )
         return
 
@@ -269,11 +340,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             )
             await asyncio.to_thread(mark_published, pending["post_id"])
             await asyncio.to_thread(set_last_category, pending["category"])
+            _published[result["page_post_id"]] = {
+                "text": pending["text"],
+                "image_path": pending["image_path"],
+                "_ts": time.time(),
+            }
             _pending.pop(post_id_str, None)
-            try:
-                os.remove(pending["image_path"])
-            except OSError:
-                pass
 
             page_line = "✅ გვერდი: გამოქვეყნდა"
             if result.get("page_url"):
@@ -334,6 +406,13 @@ def main() -> None:
         interval=1800,  # check every 30 minutes
         first=60,
         name="auto_publish_check",
+    )
+
+    app.job_queue.run_repeating(
+        callback=cleanup_published,
+        interval=3600,  # check every hour
+        first=120,
+        name="cleanup_published",
     )
 
     app.add_handler(CommandHandler("generate", generate_command))
