@@ -27,7 +27,7 @@ _PENDING_TTL = 48 * 3600  # 48 hours — entries older than this are expired
 
 # Rate limiting for /generate: chat_id → last call timestamp
 _last_generate: dict[int, float] = {}
-_GENERATE_COOLDOWN = 120  # 2 minutes between manual triggers
+_GENERATE_COOLDOWN = 30  # 30 seconds between manual triggers
 
 # Active generation task (only one at a time)
 _active_generation: asyncio.Task | None = None
