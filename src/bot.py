@@ -172,6 +172,30 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
     action, post_id_str = parts
 
+    # Delete action does not use _pending — handle it before the pending check
+    if action == "delete":
+        config: Config = context.bot_data["config"]
+        await query.edit_message_reply_markup(reply_markup=None)
+        try:
+            deleted = await asyncio.to_thread(
+                delete_facebook_post, post_id_str, config.fb_page_access_token
+            )
+            if deleted:
+                await context.bot.send_message(
+                    chat_id=config.telegram_chat_id, text="🗑️ პოსტი წაიშალა Facebook გვერდიდან."
+                )
+            else:
+                await context.bot.send_message(
+                    chat_id=config.telegram_chat_id, text="⚠️ პოსტი ვერ წაიშალა — შეიძლება უკვე წაშლილია."
+                )
+        except Exception as exc:
+            logger.error("Facebook delete failed: %s", exc)
+            await context.bot.send_message(
+                chat_id=config.telegram_chat_id,
+                text=f"❌ წაშლა ვერ მოხდა.\n{str(exc)[:300]}",
+            )
+        return
+
     pending = _pending.get(post_id_str)
 
     # Expire stale pending entries (older than _PENDING_TTL)
@@ -227,30 +251,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 chat_id=config.telegram_chat_id,
                 text=f"❌ Facebook-ზე ვერ გამოქვეყნდა.\n\nშეცდომა: {str(exc)[:400]}",
                 reply_markup=_retry_keyboard(pending["post_id"]),
-            )
-
-    elif action == "delete":
-        # post_id_str here is the Facebook post ID (e.g. "page_id_post_id")
-        fb_post_id = post_id_str
-        config: Config = context.bot_data["config"]
-        await query.edit_message_reply_markup(reply_markup=None)
-        try:
-            deleted = await asyncio.to_thread(
-                delete_facebook_post, fb_post_id, config.fb_page_access_token
-            )
-            if deleted:
-                await context.bot.send_message(
-                    chat_id=config.telegram_chat_id, text="🗑️ პოსტი წაიშალა Facebook გვერდიდან."
-                )
-            else:
-                await context.bot.send_message(
-                    chat_id=config.telegram_chat_id, text="⚠️ პოსტი ვერ წაიშალა — შეიძლება უკვე წაშლილია."
-                )
-        except Exception as exc:
-            logger.error("Facebook delete failed: %s", exc)
-            await context.bot.send_message(
-                chat_id=config.telegram_chat_id,
-                text=f"❌ წაშლა ვერ მოხდა.\n{str(exc)[:300]}",
             )
 
     elif action == "regenerate":
