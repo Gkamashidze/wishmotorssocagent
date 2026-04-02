@@ -30,6 +30,9 @@ def _post_photo(target_id: str, access_token: str, caption: str, image_path: str
     url = f"{_GRAPH_BASE}/{target_id}/photos"
 
     def _call():
+        caption_bytes = caption.encode("utf-8")
+        logger.info("Caption bytes preview (hex): %s", caption_bytes[:60].hex())
+        logger.info("Caption text preview: %r", caption[:80])
         with open(image_path, "rb") as image_file:
             response = requests.post(
                 url,
