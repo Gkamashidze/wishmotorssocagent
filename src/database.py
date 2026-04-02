@@ -88,3 +88,22 @@ def mark_skipped(post_id: int) -> None:
         if post:
             post.status = "skipped"
             session.commit()
+
+
+def get_last_pending_post() -> dict | None:
+    """Return the most recent pending post, or None if there is none."""
+    with Session() as session:
+        post = (
+            session.query(Post)
+            .filter_by(status="pending")
+            .order_by(Post.id.desc())
+            .first()
+        )
+        if not post:
+            return None
+        return {
+            "post_id": post.id,
+            "text": post.text_content,
+            "image_path": post.image_path,
+            "category": post.category,
+        }
