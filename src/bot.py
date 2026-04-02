@@ -10,7 +10,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 
 from src.config import load_config, Config
-from src.database import get_last_category, set_last_category, save_post, mark_published, mark_skipped
+from src.database import get_last_category, set_last_category, save_post, mark_published, mark_skipped, get_last_pending_post
 from src.content import next_category, build_text_prompt, build_image_prompt, extract_parts_from_text, clean_text, CONTACT_INFO
 from src.gemini_client import generate_post_text, generate_post_image
 from src.facebook_client import publish_to_facebook, delete_facebook_post
@@ -148,6 +148,29 @@ async def stop_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text("🛑 გენერაცია გაჩერდა.")
     else:
         await update.message.reply_text("ℹ️ გენერაცია არ მიმდინარეობს.")
+
+
+async def retry_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/retry — resend last DB-pending post to Telegram without regenerating."""
+    config: Config = context.bot_data["config"]
+    if update.effective_chat.id != config.telegram_chat_id:
+        return
+
+    if _pending:
+        await update.message.reply_text("ℹ️ პოსტი უკვე ელოდება — ღილაკები ზემოთ.")
+        return
+
+    post = await asyncio.to_thread(get_last_pending_post)
+    if not post:
+        await update.message.reply_text("ℹ️ pending პოსტი ვერ მოიძებნა. გამოიყენე /generate.")
+        return
+
+    if not os.path.exists(post["image_path"]):
+        await update.message.reply_text("⚠️ სურათი წაშლილია. საჭიროა ახალი /generate.")
+        return
+
+    post["config"] = config
+    await _send_for_approval(context.bot, config.telegram_chat_id, post)
 
 
 async def scheduled_post(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -417,6 +440,7 @@ def main() -> None:
 
     app.add_handler(CommandHandler("generate", generate_command))
     app.add_handler(CommandHandler("stop", stop_command))
+    app.add_handler(CommandHandler("retry", retry_command))
     app.add_handler(CallbackQueryHandler(handle_callback))
     logger.info("Wish Motors bot started. Posts scheduled: Mon & Thu 10:00 GEST.")
     app.run_polling(allowed_updates=["message", "callback_query"])
