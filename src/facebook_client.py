@@ -33,8 +33,7 @@ def _post_photo(target_id: str, access_token: str, caption: str, image_path: str
         with open(image_path, "rb") as image_file:
             response = requests.post(
                 url,
-                params={"access_token": access_token},
-                data={"caption": caption},
+                params={"access_token": access_token, "caption": caption},
                 files=[("source", ("photo.jpg", image_file, "image/jpeg"))],
                 timeout=60,
             )
