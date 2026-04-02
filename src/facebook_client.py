@@ -56,37 +56,6 @@ def _post_photo(target_id: str, access_token: str, caption: str, image_path: str
     return _retry(_call)
 
 
-def _post_photo_to_group(group_id: str, access_token: str, caption: str, image_path: str) -> str:
-    """Upload photo with caption directly to a Facebook group. Returns post ID."""
-    url = f"{_GRAPH_BASE}/{group_id}/photos"
-
-    def _call():
-        with open(image_path, "rb") as image_file:
-            response = requests.post(
-                url,
-                params={"access_token": access_token},
-                files=[
-                    ("source", ("photo.jpg", image_file, "image/jpeg")),
-                    ("caption", (None, caption.encode("utf-8"), "text/plain; charset=utf-8")),
-                ],
-                timeout=60,
-            )
-        if not response.ok:
-            fb_error = response.json().get("error", {})
-            msg = fb_error.get("message", response.text[:200])
-            code = fb_error.get("code", response.status_code)
-            logger.error("Facebook group photo error %s: %s", code, msg)
-            raise requests.HTTPError(
-                f"Facebook error {code}: {msg}", response=response
-            )
-        data = response.json()
-        post_id = data.get("post_id") or data.get("id", "unknown")
-        logger.info("Posted photo to group %s → post_id=%s", group_id, post_id)
-        return post_id
-
-    return _retry(_call)
-
-
 def delete_facebook_post(post_id: str, access_token: str) -> bool:
     """Delete a Facebook post by ID. Returns True if deleted successfully."""
     try:
@@ -126,36 +95,18 @@ def verify_post(post_id: str, access_token: str) -> str | None:
 
 def publish_to_facebook(
     page_id: str,
-    group_id: str,
     page_access_token: str,
-    user_access_token: str,
     message: str,
     image_path: str,
 ) -> dict[str, str]:
-    """Publish photo to page, then post the same photo directly to the group.
+    """Publish photo to Facebook page.
 
-    Page publish is mandatory — raises on failure.
-    Group post failure is logged but does not raise (page post stays live).
-    Returns dict with keys: page_post_id, group_post_id, page_url, group_error.
+    Returns dict with keys: page_post_id, page_url.
     """
     page_post_id = _post_photo(page_id, page_access_token, message, image_path)
     page_url = verify_post(page_post_id, page_access_token)
 
-    group_error = ""
-    group_post_id = "failed"
-
-    try:
-        group_post_id = _post_photo_to_group(group_id, user_access_token, message, image_path)
-    except Exception as exc:
-        logger.error(
-            "Group post failed after %d attempts (page post %s is live): %s",
-            _MAX_ATTEMPTS, page_post_id, exc,
-        )
-        group_error = str(exc)[:300]
-
     return {
         "page_post_id": page_post_id,
-        "group_post_id": group_post_id,
         "page_url": page_url or "",
-        "group_error": group_error,
     }

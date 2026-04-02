@@ -216,9 +216,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             result = await asyncio.to_thread(
                 publish_to_facebook,
                 page_id=config.fb_page_id,
-                group_id=config.fb_group_id,
                 page_access_token=config.fb_page_access_token,
-                user_access_token=config.fb_user_access_token,
                 message=pending["text"],
                 image_path=pending["image_path"],
             )
@@ -230,19 +228,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             except OSError:
                 pass
 
-            # Build verification report
-            page_ok = result["page_post_id"] != "failed"
-            group_ok = result["group_post_id"] != "failed"
             page_line = "✅ გვერდი: გამოქვეყნდა"
             if result.get("page_url"):
                 page_line += f"\n🔗 {result['page_url']}"
-            if group_ok:
-                group_line = "✅ ჯგუფი: გამოქვეყნდა"
-            else:
-                group_line = f"⚠️ ჯგუფი: ვერ გამოქვეყნდა\n❗ {result.get('group_error', 'უცნობი შეცდომა')}"
             await context.bot.send_message(
                 chat_id=config.telegram_chat_id,
-                text=f"{page_line}\n{group_line}",
+                text=page_line,
                 reply_markup=_delete_keyboard(result["page_post_id"]),
             )
         except Exception as exc:
