@@ -45,7 +45,8 @@ def _post_photo(target_id: str, access_token: str, caption: str, image_path: str
             raise requests.HTTPError(
                 f"Facebook error {code}: {msg}", response=response
             )
-        post_id = response.json().get("id", "unknown")
+        data = response.json()
+        post_id = data.get("post_id") or data.get("id", "unknown")
         logger.info("Posted to %s → post_id=%s", target_id, post_id)
         return post_id
 
