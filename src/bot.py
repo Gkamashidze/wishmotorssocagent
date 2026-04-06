@@ -415,11 +415,12 @@ def main() -> None:
     app = Application.builder().token(config.telegram_bot_token).build()
     app.bot_data["config"] = config
 
-    # Monday=0, Thursday=3 at 10:00 Tbilisi (UTC+4) = 06:00 UTC
+    # Monday=1, Thursday=4 at 10:00 Tbilisi (UTC+4) = 06:00 UTC
+    # PTB days: 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday
     app.job_queue.run_daily(
         callback=scheduled_post,
         time=datetime.now(_tz.utc).replace(hour=6, minute=0, second=0, microsecond=0).timetz(),
-        days=(0, 3),
+        days=(1, 4),
         name="wish_motors_post",
         job_kwargs={"misfire_grace_time": 60},
     )
