@@ -16,6 +16,15 @@ _IMAGE_API = (
 )
 _MAX_ATTEMPTS = 3
 
+
+class ServiceUnavailableError(Exception):
+    """Raised when Gemini/Imagen returns 503 or UNAVAILABLE — needs a long retry."""
+
+
+def _is_service_unavailable(exc: Exception) -> bool:
+    msg = str(exc).upper()
+    return "503" in msg or "UNAVAILABLE" in msg
+
 # Module-level client cache — one client per API key, not re-created on every call
 _client_cache: dict[str, genai.Client] = {}
 
@@ -27,11 +36,17 @@ def _get_client(api_key: str) -> genai.Client:
 
 
 def _retry(func, *args, **kwargs):
-    """Run func with exponential backoff. Raises on final failure."""
+    """Run func with exponential backoff. Raises on final failure.
+
+    503/UNAVAILABLE errors are raised immediately as ServiceUnavailableError
+    so the caller (bot.py) can handle them with longer waits and user notification.
+    """
     for attempt in range(_MAX_ATTEMPTS):
         try:
             return func(*args, **kwargs)
         except Exception as exc:
+            if _is_service_unavailable(exc):
+                raise ServiceUnavailableError(str(exc)) from exc
             if attempt == _MAX_ATTEMPTS - 1:
                 raise
             wait = 2 ** attempt * 3  # 3s, 6s

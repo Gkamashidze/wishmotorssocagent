@@ -12,7 +12,7 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 from src.config import load_config, Config
 from src.database import get_last_category, set_last_category, save_post, mark_published, mark_skipped, get_last_pending_post
 from src.content import next_category, build_text_prompt, build_image_prompt, extract_parts_from_text, clean_text, CONTACT_INFO
-from src.gemini_client import generate_post_text, generate_post_image
+from src.gemini_client import generate_post_text, generate_post_image, ServiceUnavailableError
 from src.facebook_client import publish_to_facebook, delete_facebook_post
 
 logging.basicConfig(
@@ -61,6 +61,36 @@ def _restore_keyboard(fb_post_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[
         InlineKeyboardButton("♻️ აღდგენა (24 სთ)", callback_data=f"restore_{fb_post_id}"),
     ]])
+
+
+# Delays between 503 retries: 30s → 60s → 120s → 240s (4 extra attempts after first failure)
+_503_RETRY_DELAYS = [30, 60, 120, 240]
+
+
+async def _generate_post_with_retry(
+    config: Config, category: str, bot, chat_id: int
+) -> dict[str, Any]:
+    """Call _generate_post with automatic retry on Gemini 503/UNAVAILABLE errors.
+
+    On 503: notifies Telegram, waits, and retries up to 4 times.
+    Any other error is raised immediately.
+    """
+    for attempt, delay in enumerate([0] + _503_RETRY_DELAYS):
+        if delay > 0:
+            mins, secs = divmod(delay, 60)
+            time_str = f"{mins} წუთი" if mins > 0 else f"{delay} წამი"
+            await bot.send_message(
+                chat_id=chat_id,
+                text=f"⏳ Gemini გადატვირთულია. {time_str}-ში ხელახლა ვცდი... ({attempt}/{len(_503_RETRY_DELAYS)})",
+            )
+            await asyncio.sleep(delay)
+        try:
+            return await _generate_post(config, category)
+        except ServiceUnavailableError as exc:
+            logger.warning("Gemini 503 on attempt %d: %s", attempt + 1, exc)
+            if attempt == len(_503_RETRY_DELAYS):
+                raise
+    raise ServiceUnavailableError("Max 503 retries exceeded")
 
 
 async def _generate_post(config: Config, category: str) -> dict[str, Any]:
@@ -122,7 +152,7 @@ async def generate_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     async def _run():
         global _active_generation
         try:
-            post_data = await _generate_post(config, category)
+            post_data = await _generate_post_with_retry(config, category, context.bot, config.telegram_chat_id)
             post_data["config"] = config
             await _send_for_approval(context.bot, config.telegram_chat_id, post_data)
         except asyncio.CancelledError:
@@ -183,7 +213,7 @@ async def scheduled_post(context: ContextTypes.DEFAULT_TYPE) -> None:
             chat_id=config.telegram_chat_id,
             text=f"⏳ ვქმნი პოსტს ({category})... (1–2 წუთი)",
         )
-        post_data = await _generate_post(config, category)
+        post_data = await _generate_post_with_retry(config, category, context.bot, config.telegram_chat_id)
         post_data["config"] = config
         await _send_for_approval(context.bot, config.telegram_chat_id, post_data)
     except Exception as exc:
@@ -399,7 +429,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await query.edit_message_reply_markup(reply_markup=None)
         await context.bot.send_message(chat_id=config.telegram_chat_id, text="🔄 ვქმნი ახალ ვარიანტს...")
         try:
-            post_data = await _generate_post(config, category)
+            post_data = await _generate_post_with_retry(config, category, context.bot, config.telegram_chat_id)
             post_data["config"] = config
             await _send_for_approval(context.bot, config.telegram_chat_id, post_data)
         except Exception as exc:
