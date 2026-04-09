@@ -9,8 +9,12 @@ from google import genai
 
 logger = logging.getLogger(__name__)
 
-_TEXT_MODEL = "gemini-2.5-flash"
-_TEXT_MODEL_FALLBACK = "gemini-2.0-flash"  # used automatically when 2.5-flash is overloaded
+# Model priority list — tried in order on 503/404 failures
+_TEXT_MODELS = [
+    "gemini-2.5-flash",       # best quality, try first
+    "gemini-2.0-flash-001",   # versioned stable release
+    "gemini-1.5-flash",       # older but very reliable
+]
 _IMAGE_API = (
     "https://generativelanguage.googleapis.com/v1beta"
     "/models/imagen-4.0-generate-001:predict"
@@ -25,6 +29,12 @@ class ServiceUnavailableError(Exception):
 def _is_service_unavailable(exc: Exception) -> bool:
     msg = str(exc).upper()
     return "503" in msg or "UNAVAILABLE" in msg
+
+
+def _is_model_gone(exc: Exception) -> bool:
+    """True for 404 NOT_FOUND or deprecated model errors — skip to next model immediately."""
+    msg = str(exc).upper()
+    return "404" in msg or "NOT_FOUND" in msg or "NO LONGER AVAILABLE" in msg
 
 # Module-level client cache — one client per API key, not re-created on every call
 _client_cache: dict[str, genai.Client] = {}
@@ -61,11 +71,14 @@ def _retry(func, *args, **kwargs):
 def generate_post_text(prompt: str, api_key: str) -> str:
     """Generate Georgian post text using Gemini SDK.
 
-    Tries _TEXT_MODEL first; on 503/UNAVAILABLE falls back to _TEXT_MODEL_FALLBACK immediately.
+    Tries each model in _TEXT_MODELS in order.
+    Skips to next model immediately on 503 (overloaded) or 404 (deprecated).
+    Raises only when all models are exhausted.
     """
     client = _get_client(api_key)
+    last_exc: Exception | None = None
 
-    for model in (_TEXT_MODEL, _TEXT_MODEL_FALLBACK):
+    for model in _TEXT_MODELS:
         def _call(m=model):
             response = client.models.generate_content(model=m, contents=prompt)
             logger.info("Text generated with %s (%d chars)", m, len(response.text))
@@ -73,16 +86,17 @@ def generate_post_text(prompt: str, api_key: str) -> str:
 
         try:
             return _retry(_call)
-        except ServiceUnavailableError as exc:
-            if model == _TEXT_MODEL_FALLBACK:
-                logger.error("Both text models unavailable: %s", exc)
-                raise
-            logger.warning("%s unavailable, switching to fallback %s", model, _TEXT_MODEL_FALLBACK)
-        except Exception as exc:
+        except (ServiceUnavailableError, Exception) as exc:
+            skip = _is_service_unavailable(exc) or _is_model_gone(exc)
+            if skip:
+                logger.warning("Model %s skipped (%s), trying next...", model, type(exc).__name__)
+                last_exc = exc
+                continue
             logger.error("Gemini text generation failed (%s): %s", model, exc)
             raise
 
-    raise ServiceUnavailableError("All text models unavailable")
+    logger.error("All text models failed. Last error: %s", last_exc)
+    raise ServiceUnavailableError(f"All models unavailable: {last_exc}")
 
 
 def generate_post_image(prompt: str, api_key: str, part_en: str = "", part_ka: str = "") -> str:
