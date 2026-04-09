@@ -10,6 +10,7 @@ from google import genai
 logger = logging.getLogger(__name__)
 
 _TEXT_MODEL = "gemini-2.5-flash"
+_TEXT_MODEL_FALLBACK = "gemini-2.0-flash"  # used automatically when 2.5-flash is overloaded
 _IMAGE_API = (
     "https://generativelanguage.googleapis.com/v1beta"
     "/models/imagen-4.0-generate-001:predict"
@@ -58,19 +59,30 @@ def _retry(func, *args, **kwargs):
 
 
 def generate_post_text(prompt: str, api_key: str) -> str:
-    """Generate Georgian post text using Gemini SDK."""
+    """Generate Georgian post text using Gemini SDK.
+
+    Tries _TEXT_MODEL first; on 503/UNAVAILABLE falls back to _TEXT_MODEL_FALLBACK immediately.
+    """
     client = _get_client(api_key)
 
-    def _call():
-        response = client.models.generate_content(model=_TEXT_MODEL, contents=prompt)
-        logger.info("Text generated successfully (%d chars)", len(response.text))
-        return response.text
+    for model in (_TEXT_MODEL, _TEXT_MODEL_FALLBACK):
+        def _call(m=model):
+            response = client.models.generate_content(model=m, contents=prompt)
+            logger.info("Text generated with %s (%d chars)", m, len(response.text))
+            return response.text
 
-    try:
-        return _retry(_call)
-    except Exception as exc:
-        logger.error("Gemini text generation failed: %s", exc)
-        raise
+        try:
+            return _retry(_call)
+        except ServiceUnavailableError as exc:
+            if model == _TEXT_MODEL_FALLBACK:
+                logger.error("Both text models unavailable: %s", exc)
+                raise
+            logger.warning("%s unavailable, switching to fallback %s", model, _TEXT_MODEL_FALLBACK)
+        except Exception as exc:
+            logger.error("Gemini text generation failed (%s): %s", model, exc)
+            raise
+
+    raise ServiceUnavailableError("All text models unavailable")
 
 
 def generate_post_image(prompt: str, api_key: str, part_en: str = "", part_ka: str = "") -> str:
