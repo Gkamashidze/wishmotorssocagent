@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 _TEXT_MODELS = [
     "gemini-2.5-flash",       # best quality, try first
     "gemini-2.0-flash-001",   # versioned stable release
-    "gemini-1.5-flash",       # older but very reliable
+    "gemini-2.0-flash",       # generic stable fallback
 ]
 _IMAGE_API = (
     "https://generativelanguage.googleapis.com/v1beta"
