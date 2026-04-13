@@ -11,9 +11,8 @@ logger = logging.getLogger(__name__)
 
 # Model priority list — tried in order on 503/404 failures
 _TEXT_MODELS = [
-    "gemini-2.0-flash",       # GA stable — most reliable
-    "gemini-2.0-flash-001",   # versioned stable release
-    "gemini-2.0-flash-lite",  # lightweight, high availability
+    "gemini-2.5-flash",   # primary — new-user API keys require 2.5+
+    "gemini-2.5-pro",     # fallback — heavier but same generation
 ]
 _IMAGE_API = (
     "https://generativelanguage.googleapis.com/v1beta"
@@ -49,16 +48,17 @@ def _get_client(api_key: str) -> genai.Client:
 def _retry(func, *args, **kwargs):
     """Run func with exponential backoff. Raises on final failure.
 
-    503/UNAVAILABLE errors are raised immediately as ServiceUnavailableError
-    so the caller (bot.py) can handle them with longer waits and user notification.
+    503/UNAVAILABLE errors are retried like any other error (3s, 6s backoff).
+    Only on the final attempt does it raise ServiceUnavailableError so the
+    caller (bot.py) can apply longer waits and notify the user via Telegram.
     """
     for attempt in range(_MAX_ATTEMPTS):
         try:
             return func(*args, **kwargs)
         except Exception as exc:
-            if _is_service_unavailable(exc):
-                raise ServiceUnavailableError(str(exc)) from exc
             if attempt == _MAX_ATTEMPTS - 1:
+                if _is_service_unavailable(exc):
+                    raise ServiceUnavailableError(str(exc)) from exc
                 raise
             wait = 2 ** attempt * 3  # 3s, 6s
             logger.warning(
