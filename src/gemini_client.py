@@ -11,9 +11,9 @@ logger = logging.getLogger(__name__)
 
 # Model priority list — tried in order on 503/404 failures
 _TEXT_MODELS = [
-    "gemini-2.5-flash",       # best quality, try first
+    "gemini-2.0-flash",       # GA stable — most reliable
     "gemini-2.0-flash-001",   # versioned stable release
-    "gemini-2.0-flash",       # generic stable fallback
+    "gemini-2.0-flash-lite",  # lightweight, high availability
 ]
 _IMAGE_API = (
     "https://generativelanguage.googleapis.com/v1beta"
