@@ -33,7 +33,8 @@ def _publish_photo_with_message(page_id: str, access_token: str, message: str, i
         with open(image_path, "rb") as image_file:
             response = requests.post(
                 url,
-                params={"access_token": access_token, "message": message},
+                params={"access_token": access_token},
+                data={"message": message},
                 files=[("source", ("photo.jpg", image_file, "image/jpeg"))],
                 timeout=60,
             )
