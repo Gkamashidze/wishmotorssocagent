@@ -30,14 +30,19 @@ def _publish_photo_with_message(page_id: str, access_token: str, message: str, i
     url = f"{_GRAPH_BASE}/{page_id}/photos"
 
     def _call():
+        # message must be in data= (not files=) so Facebook reads it as UTF-8.
+        # files= with per-part Content-Type is ignored by Facebook for non-file fields,
+        # causing emoji bytes to be misread as Latin-1 → replacement characters (U+FFFD).
+        logger.debug(
+            "Publishing message (%d chars), first 80 chars: %r",
+            len(message), message[:80],
+        )
         with open(image_path, "rb") as image_file:
             response = requests.post(
                 url,
                 params={"access_token": access_token},
-                files=[
-                    ("source", ("photo.jpg", image_file, "image/jpeg")),
-                    ("message", (None, message.encode("utf-8"), "text/plain; charset=utf-8")),
-                ],
+                data={"message": message},
+                files={"source": ("photo.jpg", image_file, "image/jpeg")},
                 timeout=60,
             )
         if not response.ok:
