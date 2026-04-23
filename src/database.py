@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 import logging
 import os
 from datetime import datetime, timezone
@@ -88,6 +89,38 @@ def mark_skipped(post_id: int) -> None:
         if post:
             post.status = "skipped"
             session.commit()
+
+
+def get_used_topics(category: str, limit: int = 5) -> list[str]:
+    with Session() as session:
+        state = session.get(AppState, f"used_topics_{category}")
+        if not state:
+            return []
+        try:
+            return json.loads(state.value)[:limit]
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+
+def save_used_topic(category: str, topic_ka: str, limit: int = 5) -> None:
+    with Session() as session:
+        key = f"used_topics_{category}"
+        state = session.get(AppState, key)
+        topics: list[str] = []
+        if state:
+            try:
+                topics = json.loads(state.value)
+            except (json.JSONDecodeError, TypeError):
+                topics = []
+        if topic_ka not in topics:
+            topics.insert(0, topic_ka)
+        topics = topics[:limit]
+        value = json.dumps(topics, ensure_ascii=False)
+        if state:
+            state.value = value
+        else:
+            session.add(AppState(key=key, value=value))
+        session.commit()
 
 
 def get_last_pending_post() -> dict | None:

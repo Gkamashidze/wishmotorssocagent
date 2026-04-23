@@ -92,13 +92,15 @@ def next_category(last_category: str) -> str:
     return _CATEGORIES[(idx + 1) % len(_CATEGORIES)]
 
 
-def build_text_prompt(category: str) -> str:
+def build_text_prompt(category: str, used_topics: list[str] | None = None) -> str:
     if category == "maintenance":
         topics = _MAINTENANCE_TOPICS
     elif category == "electrical":
         topics = _ELECTRICAL_TOPICS
     else:
         topics = _WARNING_SIGNS_TOPICS
+    if used_topics:
+        topics += f"\n\nᲛᲝᲠᲘᲃᲔᲣᲚᲘ: ეს თემები ბოლოს უკვე გამოვიყენეთ — ამჯერად სხვა თემა აირჩიე: {', '.join(used_topics)}"
     return _BASE_SYSTEM.format(topics=topics, example=_EXAMPLE_POST)
 
 

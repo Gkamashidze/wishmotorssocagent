@@ -10,7 +10,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 
 from src.config import load_config, Config
-from src.database import get_last_category, set_last_category, save_post, mark_published, mark_skipped, get_last_pending_post
+from src.database import get_last_category, set_last_category, save_post, mark_published, mark_skipped, get_last_pending_post, get_used_topics, save_used_topic
 from src.content import next_category, build_text_prompt, build_image_prompt, extract_parts_from_text, clean_text, CONTACT_INFO
 from src.gemini_client import generate_post_text, generate_post_image, ServiceUnavailableError
 from src.facebook_client import publish_to_facebook, delete_facebook_post
@@ -99,10 +99,12 @@ async def _generate_post(config: Config, category: str) -> dict[str, Any]:
     All blocking I/O (Gemini SDK, requests, SQLite) runs in a thread pool so
     the Telegram event loop is never blocked.
     """
+    used_topics = await asyncio.to_thread(get_used_topics, category)
     raw_text = await asyncio.to_thread(
-        generate_post_text, build_text_prompt(category), config.gemini_api_key
+        generate_post_text, build_text_prompt(category, used_topics), config.gemini_api_key
     )
     part_en, part_ka = extract_parts_from_text(raw_text)
+    await asyncio.to_thread(save_used_topic, category, part_ka)
     post_text = clean_text(raw_text)
     full_text = post_text + CONTACT_INFO
     image_path = await asyncio.to_thread(
