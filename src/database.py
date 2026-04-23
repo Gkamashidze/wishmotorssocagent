@@ -91,18 +91,18 @@ def mark_skipped(post_id: int) -> None:
             session.commit()
 
 
-def get_used_topics(category: str, limit: int = 5) -> list[str]:
+def get_used_topics(category: str) -> list[str]:
     with Session() as session:
         state = session.get(AppState, f"used_topics_{category}")
         if not state:
             return []
         try:
-            return json.loads(state.value)[:limit]
+            return json.loads(state.value)
         except (json.JSONDecodeError, TypeError):
             return []
 
 
-def save_used_topic(category: str, topic_ka: str, limit: int = 5) -> None:
+def save_used_topic(category: str, topic_ka: str) -> None:
     with Session() as session:
         key = f"used_topics_{category}"
         state = session.get(AppState, key)
@@ -112,9 +112,10 @@ def save_used_topic(category: str, topic_ka: str, limit: int = 5) -> None:
                 topics = json.loads(state.value)
             except (json.JSONDecodeError, TypeError):
                 topics = []
-        if topic_ka not in topics:
-            topics.insert(0, topic_ka)
-        topics = topics[:limit]
+        # Always move to front so order = most-recent-first
+        if topic_ka in topics:
+            topics.remove(topic_ka)
+        topics.insert(0, topic_ka)
         value = json.dumps(topics, ensure_ascii=False)
         if state:
             state.value = value

@@ -100,7 +100,12 @@ def build_text_prompt(category: str, used_topics: list[str] | None = None) -> st
     else:
         topics = _WARNING_SIGNS_TOPICS
     if used_topics:
-        topics += f"\n\nᲛᲝᲠᲘᲃᲔᲣᲚᲘ: ეს თემები ბოლოს უკვე გამოვიყენეთ — ამჯერად სხვა თემა აირჩიე: {', '.join(used_topics)}"
+        topics += (
+            f"\n\nᲛᲝᲠᲘᲑᲔᲣᲚᲘ: ქვემოთ სია ყველა ადრე გამოყენებული თემისა (პირველი = ყველაზე ბოლოს გამოყენებული):\n"
+            f"{', '.join(used_topics)}\n"
+            f"ამჯერად ამ სიიდან გამოუყენებელი თემა აირჩიე. "
+            f"თუ ყველა თემა სიაშია, სიის ბოლოში მყოფი (ყველაზე დიდი ხნის წინ გამოყენებული) აირჩიე."
+        )
     return _BASE_SYSTEM.format(topics=topics, example=_EXAMPLE_POST)
 
 
