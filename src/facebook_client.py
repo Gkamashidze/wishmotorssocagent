@@ -1,6 +1,7 @@
 from __future__ import annotations
 import logging
 import time
+import uuid
 import requests
 
 logger = logging.getLogger(__name__)
@@ -25,13 +26,51 @@ def _retry(func, *args, **kwargs):
             time.sleep(wait)
 
 
+def _build_multipart_utf8(
+    fields: dict[str, str],
+    file_name: str,
+    file_data: bytes,
+    file_mime: str,
+) -> tuple[bytes, str]:
+    """Build multipart/form-data with explicit UTF-8 charset on every text field.
+
+    Standard requests/urllib3 send text fields without a Content-Type header,
+    so Facebook defaults to latin-1 and emoji bytes get mangled. Building the
+    body manually lets us declare charset=utf-8 explicitly on each text part.
+    """
+    boundary = "WishMotorsBoundary" + uuid.uuid4().hex
+    sep = ("--" + boundary + "\r\n").encode("ascii")
+    end = ("--" + boundary + "--\r\n").encode("ascii")
+    parts: list[bytes] = []
+
+    for name, value in fields.items():
+        header = (
+            f'Content-Disposition: form-data; name="{name}"\r\n'
+            f'Content-Type: text/plain; charset=utf-8\r\n'
+            f'\r\n'
+        ).encode("ascii")
+        parts.append(sep + header + value.encode("utf-8") + b"\r\n")
+
+    file_header = (
+        f'Content-Disposition: form-data; name="source"; filename="{file_name}"\r\n'
+        f'Content-Type: {file_mime}\r\n'
+        f'\r\n'
+    ).encode("ascii")
+    parts.append(sep + file_header + file_data + b"\r\n")
+    parts.append(end)
+
+    body = b"".join(parts)
+    content_type = f"multipart/form-data; boundary={boundary}"
+    return body, content_type
+
+
 def _publish_photo_with_message(
     page_id: str, access_token: str, message: str, image_path: str
 ) -> str:
     """Publish photo + message to Facebook page. Returns post_id.
 
-    message is sent as a URL query parameter (percent-encoded UTF-8 by requests),
-    so emoji arrive intact. Only the image binary goes in the multipart body.
+    Sends message as a text/plain; charset=utf-8 multipart part so Facebook
+    receives the emoji bytes declared as UTF-8 rather than defaulting to latin-1.
     """
     url = f"{_GRAPH_BASE}/{page_id}/photos"
 
@@ -40,15 +79,22 @@ def _publish_photo_with_message(
             "Publishing photo post — message length=%d, first 80 chars: %r",
             len(message), message[:80],
         )
-        with open(image_path, "rb") as image_file:
-            response = requests.post(
-                url,
-                # message + token in URL query string → urllib.parse.urlencode
-                # percent-encodes every char → emoji arrive as %F0%9F... (UTF-8)
-                params={"message": message, "access_token": access_token},
-                files={"source": ("photo.jpg", image_file, "image/jpeg")},
-                timeout=60,
-            )
+        with open(image_path, "rb") as f:
+            image_data = f.read()
+
+        body, ct = _build_multipart_utf8(
+            fields={"access_token": access_token, "message": message},
+            file_name="photo.jpg",
+            file_data=image_data,
+            file_mime="image/jpeg",
+        )
+
+        response = requests.post(
+            url,
+            data=body,
+            headers={"Content-Type": ct},
+            timeout=60,
+        )
         if not response.ok:
             fb_error = response.json().get("error", {})
             msg = fb_error.get("message", response.text[:300])
@@ -111,8 +157,8 @@ def publish_to_facebook(
 ) -> dict[str, str]:
     """Publish photo + message to Facebook page.
 
-    Single-step: POST to /photos with message in URL query params (emoji-safe)
-    and image binary in multipart body.
+    POST to /photos with manually built multipart body where the message field
+    carries Content-Type: text/plain; charset=utf-8 (explicit, not inferred).
 
     Returns dict with keys: page_post_id, page_url.
     """
