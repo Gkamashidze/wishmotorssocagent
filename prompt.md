@@ -40,7 +40,7 @@ Bot ქმნის Facebook პოსტებს (ქართული ტე
 | `src/bot.py` | Telegram bot — scheduler, /generate, /stop, /retry, approve/regenerate/retry/delete/restore ღილაკები |
 | `src/content.py` | Gemini prompt-ები, PART_EN/PART_KA, markdown გაწმენდა, 3 კატეგორია |
 | `src/gemini_client.py` | Gemini 2.5-flash ტექსტი + Imagen 4.0 სურათი, retry + client singleton |
-| `src/facebook_client.py` | Graph API v21.0, single-step /photos publish, verify_post, retry |
+| `src/facebook_client.py` | Graph API v21.0, two-step /photos→/feed publish, emoji verify, retry |
 | `src/image_overlay.py` | Pillow ბანერი — NotoSansGeorgian-Bold.ttf (ქართ.), NotoSans-Regular.ttf |
 | `src/database.py` | SQLite + SQLAlchemy, `_resolve_db_url()`, `get_last_pending_post()` |
 | `src/config.py` | .env ცვლადები, frozen dataclass |
@@ -74,16 +74,27 @@ Bot ქმნის Facebook პოსტებს (ქართული ტე
 ## Facebook გამოქვეყნება — მიმდინარე სტატუსი
 
 **ჯგუფი:** Facebook Groups API deprecated (April 2024) — სრულად ამოღებულია სისტემიდან.
-**გვერდი:** `/photos` endpoint, single-step, `files=` multipart + explicit `charset=utf-8`.
+**გვერდი:** ორნაბიჯიანი publish — `/photos?published=false` (media_fbid) → `/feed` (JSON body).
 
 ### Facebook publish კოდი (facebook_client.py)
 ```python
-files=[
-    ("message", (None, message, "text/plain; charset=utf-8")),
-    ("source", ("photo.jpg", image_file, "image/jpeg")),
-]
+# Step 1: upload photo unpublished, get media_fbid
+requests.post(f"{GRAPH}/{page}/photos",
+    params={"access_token": ...},
+    data={"published": "false"},
+    files={"source": ("photo.jpg", f, "image/jpeg")})
+
+# Step 2: /feed with JSON body, ensure_ascii=False, charset=utf-8
+body = json.dumps({
+    "message": message,
+    "attached_media": [{"media_fbid": photo_id}],
+}, ensure_ascii=False).encode("utf-8")
+requests.post(f"{GRAPH}/{page}/feed",
+    params={"access_token": ...},
+    data=body,
+    headers={"Content-Type": "application/json; charset=utf-8"})
 ```
-**რატომ ასე:** `data={}` და `params={}` emoji-ს ანგრევდა (□). `files=` ერთადერთი გზაა explicit charset-ის გასაწერად multipart-ში. `attached_media` (two-step approach) ასევე ვცადეთ — error 100 "global id not allowed".
+**რატომ ასე:** `/photos` endpoint message ველი ჩუმად კვეცავს 4-byte UTF-8-ს (emoji) `?`-ად. 3-byte UTF-8 (ქართული, კირილიცა) მუშაობს. `data={}`, `params={}`, `files=` charset-ით — ყველა ჩავარდა, რადგან endpoint-ის backend პრობლემაა. `/feed` სრულ UTF-8-ს იღებს. `ensure_ascii=False` სავალდებულოა — `requests.post(json=)` default-ად emoji-ს `\uXXXX`-ად დააქცევს. Post-publish-ის შემდეგ `_verify_emoji_preserved` ლოგში წერს `sent vs stored emoji count` — diagnostic-ისთვის.
 
 ---
 
@@ -97,7 +108,9 @@ files=[
   (გენერაციის დროს /stop = გაჩერება)
 
 ✅ გამოაქვეყნე
-  → Facebook /photos (message UTF-8 + image)
+  → Facebook /photos?published=false → media_fbid
+  → Facebook /feed (JSON body, message+attached_media, charset=utf-8)
+  → _verify_emoji_preserved (sent vs stored emoji count → log)
   → verify_post → permalink URL
   → Telegram: "✅ გვერდი: გამოქვეყნდა\n🔗 url" + [🗑️ პოსტის წაშლა]
   → _published cache-ში ინახება 24 სთ
