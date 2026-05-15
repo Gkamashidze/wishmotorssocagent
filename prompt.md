@@ -27,7 +27,7 @@
 **Wish Motors** — SsangYong-ის სპეციალიზებული ცენტრი ბათუმში.
 Bot ქმნის Facebook პოსტებს (ქართული ტექსტი + AI სურათი) და აქვეყნებს გვერდზე.
 
-**ბოლო commit:** 910f3df — feat: add /retry command to restore pending post after Railway restart
+**ბოლო commit:** 61726d3 — fix: use me/ endpoint for FB, weekly schedule (Mon), stronger topic avoidance
 **Railway:** Online, worker process, polling რეჟიმი
 **სქემა:** SQLite @ `/data/wishmotors.db` (Railway Volume) ან `/tmp/` fallback
 
@@ -51,7 +51,7 @@ Bot ქმნის Facebook პოსტებს (ქართული ტე
 
 - **GitHub:** main branch → Railway ავტო-deploy
 - **Railway:** worker process, `restartPolicyType: ON_FAILURE`
-- **Scheduler:** ორშ+ხუთ 06:00 UTC = 10:00 საქართველო, `misfire_grace_time: 60`
+- **Scheduler:** ორშ 06:00 UTC = 10:00 საქართველო (კვირაში ერთხელ), `misfire_grace_time: 60`
 - **Railway env variables:** `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `GEMINI_API_KEY`, `FB_PAGE_ID`, `FB_PAGE_ACCESS_TOKEN`
 - **Railway Volume:** `/data` — DB-ს ინახავს restart-ებს შორის
 
@@ -175,6 +175,9 @@ requests.post(f"{GRAPH}/{page}/feed",
 | pending იკარგებოდა restart-ზე | `/retry` ბრძანება — DB-დან ხელახლა წამოღება |
 | წაშლილი პოსტის აღდგენა | `_published` cache + ♻️ ღილაკი (24 სთ ფანჯარა) |
 | 24 სთ auto-publish | `auto_publish_check` job, 30 წუთში ერთხელ |
+| FB error 100 "global id" on /feed | `me/photos` + `me/feed` Page Token-ით (page_id-ს მაგივრად) |
+| ხუნდები მეორდება | topic avoidance — 🚫 ერთობლივი forbidden სია Gemini-ს prompt-ში |
+| ორჯერ კვირაში (ორშ+ხუთ) | კვირაში ერთხელ ორშაბათი 10:00 |
 
 ---
 
