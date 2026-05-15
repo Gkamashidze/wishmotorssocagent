@@ -1,5 +1,4 @@
 from __future__ import annotations
-import json
 import logging
 import os
 from datetime import datetime, timezone
@@ -91,37 +90,21 @@ def mark_skipped(post_id: int) -> None:
             session.commit()
 
 
-def get_used_topics(category: str) -> list[str]:
+def get_next_topic(category: str, topic_list: list[str]) -> str:
+    """Return the next topic in rotation for the given category and advance the index."""
+    key = f"topic_index_{category}"
     with Session() as session:
-        state = session.get(AppState, f"used_topics_{category}")
-        if not state:
-            return []
-        try:
-            return json.loads(state.value)
-        except (json.JSONDecodeError, TypeError):
-            return []
-
-
-def save_used_topic(category: str, topic_ka: str) -> None:
-    with Session() as session:
-        key = f"used_topics_{category}"
         state = session.get(AppState, key)
-        topics: list[str] = []
+        idx = int(state.value) if state and state.value.isdigit() else 0
+        topic = topic_list[idx % len(topic_list)]
+        next_idx = (idx + 1) % len(topic_list)
         if state:
-            try:
-                topics = json.loads(state.value)
-            except (json.JSONDecodeError, TypeError):
-                topics = []
-        # Always move to front so order = most-recent-first
-        if topic_ka in topics:
-            topics.remove(topic_ka)
-        topics.insert(0, topic_ka)
-        value = json.dumps(topics, ensure_ascii=False)
-        if state:
-            state.value = value
+            state.value = str(next_idx)
         else:
-            session.add(AppState(key=key, value=value))
+            session.add(AppState(key=key, value=str(next_idx)))
         session.commit()
+        logger.info("Topic selected for %s: [%d/%d] %s", category, idx, len(topic_list), topic)
+        return topic
 
 
 def get_last_pending_post() -> dict | None:
