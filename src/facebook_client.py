@@ -35,7 +35,7 @@ def _upload_photo_unpublished(
     /photos message field truncates 4-byte UTF-8 (emoji) to '?'. The message
     is sent in step 2 via /feed which accepts full UTF-8.
     """
-    url = f"{_GRAPH_BASE}/{page_id}/photos"
+    url = f"{_GRAPH_BASE}/me/photos"
 
     def _call():
         with open(image_path, "rb") as image_file:
@@ -76,7 +76,7 @@ def _publish_feed_with_photo(
       so the body contains raw UTF-8 bytes — no escaping ambiguity for Facebook
       to mishandle.
     """
-    url = f"{_GRAPH_BASE}/{page_id}/feed"
+    url = f"{_GRAPH_BASE}/me/feed"
 
     def _call():
         logger.info(

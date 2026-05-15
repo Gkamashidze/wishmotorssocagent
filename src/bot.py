@@ -447,12 +447,12 @@ def main() -> None:
     app = Application.builder().token(config.telegram_bot_token).build()
     app.bot_data["config"] = config
 
-    # Monday=1, Thursday=4 at 10:00 Tbilisi (UTC+4) = 06:00 UTC
+    # Monday=1 at 10:00 Tbilisi (UTC+4) = 06:00 UTC — weekly post
     # PTB days: 0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday
     app.job_queue.run_daily(
         callback=scheduled_post,
         time=datetime.now(_tz.utc).replace(hour=6, minute=0, second=0, microsecond=0).timetz(),
-        days=(1, 4),
+        days=(1,),
         name="wish_motors_post",
         job_kwargs={"misfire_grace_time": 60},
     )
@@ -475,7 +475,7 @@ def main() -> None:
     app.add_handler(CommandHandler("stop", stop_command))
     app.add_handler(CommandHandler("retry", retry_command))
     app.add_handler(CallbackQueryHandler(handle_callback))
-    logger.info("Wish Motors bot started. Posts scheduled: Mon & Thu 10:00 GEST.")
+    logger.info("Wish Motors bot started. Posts scheduled: Mon 10:00 GEST (weekly).")
     app.run_polling(allowed_updates=["message", "callback_query"])
 
 
